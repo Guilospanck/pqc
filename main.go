@@ -30,30 +30,27 @@ var alice Alice = Alice{sharedSecret: nil, message: nil}
 const ENCRYPTED_MESSAGE string = "hello"
 
 func main() {
-	// Alice generates a new key pair and sends the encapsulation key to Bob.
 	// private key
-	dk, err := mlkem.GenerateKey768()
+	decapsulationKey, err := mlkem.GenerateKey768()
 	if err != nil {
 		log.Fatal(err)
 	}
 	// public key
-	encapsulationKey := dk.EncapsulationKey().Bytes()
+	encapsulationKey := decapsulationKey.EncapsulationKey().Bytes()
 
-	// Bob uses the encapsulation key to encapsulate a shared secret, and sends
-	// back the ciphertext to Alice.
 	ciphertext := keyExchange(encapsulationKey)
 
-	// Alice decapsulates the shared secret from the ciphertext.
-	sharedSecret, err := dk.Decapsulate(ciphertext)
+	// Alice decapsulates the shared secret from the ciphertext using her private key.
+	sharedSecret, err := decapsulationKey.Decapsulate(ciphertext)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Alice and Bob now share a secret.
+	// Alice and Bob now share a secret that never went out on the wire.
 	alice.sharedSecret = sharedSecret
-	alice.sharedSecretHKDF = deriveKey(sharedSecret)
+	alice.sharedSecretHKDF = deriveKey(sharedSecret) // uses HKDF
 
-	// encrypt message
+	// encrypt message with symmetric-key algorithm
 	nonce, encryptedMessage, err := encrypt(alice.sharedSecretHKDF, []byte(ENCRYPTED_MESSAGE))
 	if err != nil {
 		log.Fatal(err)
@@ -62,7 +59,10 @@ func main() {
 	sendEncryptedMessage(encryptedMessage, nonce)
 
 	// validate that both of them have the same message
+	validate()
+}
 
+func validate() {
 	fmt.Println("Shared secrets match: ", string(alice.sharedSecret) == string(bob.sharedSecret))
 	fmt.Println("Messages match: ", ENCRYPTED_MESSAGE == string(bob.message))
 }
@@ -75,16 +75,18 @@ func sendEncryptedMessage(ciphertext, nonce []byte) {
 }
 
 func keyExchange(encapsulationKey []byte) (ciphertext []byte) {
-	// Bob encapsulates a shared secret using the encapsulation key (public key).
+	// Get the public key out of the byte array.
 	ek, err := mlkem.NewEncapsulationKey768(encapsulationKey)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Bob encapsulates a shared secret using the encapsulation key (public key).
 	sharedSecret, ciphertext := ek.Encapsulate()
 
 	// Alice and Bob now share a secret.
 	bob.sharedSecret = sharedSecret
-	bob.sharedSecretHKDF = deriveKey(sharedSecret)
+	bob.sharedSecretHKDF = deriveKey(sharedSecret) // uses HKDF
 
 	// Bob sends the ciphertext to Alice.
 	return ciphertext
@@ -99,12 +101,14 @@ func deriveKey(sharedSecret []byte) []byte {
 	return key
 }
 
+// Symmetrically encrypts a message using CHACHA20-POLY1305
 func encrypt(key, plaintext []byte) ([]byte, []byte, error) {
 	aead, err := chacha20poly1305.New(key)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// different nonce for each message (plaintext)
 	nonce := make([]byte, chacha20poly1305.NonceSize)
 	rand.Read(nonce)
 
@@ -113,6 +117,7 @@ func encrypt(key, plaintext []byte) ([]byte, []byte, error) {
 	return nonce, ciphertext, nil
 }
 
+// Symmetrically decripts a message using CHACHA20-POLY1305
 func decrypt(key, nonce, ciphertext []byte) []byte {
 	aead, err := chacha20poly1305.New(key)
 	if err != nil {
