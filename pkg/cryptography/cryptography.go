@@ -3,7 +3,6 @@ package cryptography
 import (
 	"crypto/mlkem"
 	"crypto/rand"
-	"fmt"
 	"log"
 
 	"crypto/sha256"
@@ -19,15 +18,16 @@ type Party struct {
 }
 
 type Keys struct {
-	Private *mlkem.DecapsulationKey768
-	Public  []byte
+	Private      *mlkem.DecapsulationKey768
+	Public       []byte
+	SharedSecret []byte
 }
 
 func GenerateKeys() (*Keys, error) {
 	// private key
 	decapsulationKey, err := mlkem.GenerateKey768()
 	if err != nil {
-		fmt.Errorf("Error trying to generate private key: %s", err.Error())
+		log.Printf("Error trying to generate private key: %s", err.Error())
 		return nil, err
 	}
 	// public key

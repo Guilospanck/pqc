@@ -48,6 +48,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		fmt.Println("Client: ", string(msg))
+		msgJson := ws.UnmarshalClientToServerMessage(msg)
+		fmt.Printf("Received: %+v", msgJson)
 	}
 }

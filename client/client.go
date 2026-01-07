@@ -30,10 +30,24 @@ func connect() {
 	// Generate keys
 	keys, err := cryptography.GenerateKeys()
 	if err != nil {
+		log.Fatal("Error generating keys: ", err)
 		return
 	}
 	connection.Keys = keys
 
+	msg := ws.ClientToServerMessage{
+		Type:  ws.ExchangeKeys,
+		Value: keys.Public,
+	}
+	jsonMsg := msg.Marshal()
+
+	// Send public key so we can exchange keys
+	if err := connection.WriteMessage(string(jsonMsg)); err != nil {
+		log.Fatal("Error trying to send public key to server: ", err)
+		return
+	}
+
+	// goroutine to read the messages from server
 	go func() {
 		for {
 			msg, err := connection.ReadMessage()
@@ -60,8 +74,15 @@ func connect() {
 			return
 		}
 
+		msg := ws.ClientToServerMessage{
+			// TODO: encrypt message
+			Type:  ws.EncryptedMessage,
+			Value: []byte(text),
+		}
+		jsonMsg := msg.Marshal()
+
 		// Send text
-		if err := connection.WriteMessage(text); err != nil {
+		if err := connection.WriteMessage(string(jsonMsg)); err != nil {
 			return
 		}
 	}
