@@ -23,12 +23,12 @@ type Keys struct {
 	SharedSecret []byte
 }
 
-func GenerateKeys() (*Keys, error) {
+func GenerateKeys() (Keys, error) {
 	// private key
 	decapsulationKey, err := mlkem.GenerateKey768()
 	if err != nil {
 		log.Printf("Error trying to generate private key: %s", err.Error())
-		return nil, err
+		return Keys{}, err
 	}
 	// public key
 	encapsulationKey := decapsulationKey.EncapsulationKey().Bytes()
@@ -38,31 +38,23 @@ func GenerateKeys() (*Keys, error) {
 		Public:  encapsulationKey,
 	}
 
-	return &keys, nil
+	return keys, nil
 }
 
-func KeyExchange(encapsulationKey []byte) (ciphertext []byte) {
+func KeyExchange(publicKey []byte) (sharedSecret, ciphertext []byte) {
 	// Get the public key out of the byte array.
-	ek, err := mlkem.NewEncapsulationKey768(encapsulationKey)
+	ek, err := mlkem.NewEncapsulationKey768(publicKey)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Bob encapsulates a shared secret using the encapsulation key (public key).
-	// sharedSecret, ciphertext := ek.Encapsulate()
-	_, ciphertext = ek.Encapsulate()
-
-	// Alice and Bob now share a secret.
-	// bob.sharedSecret = sharedSecret
-	// bob.sharedSecretHKDF = deriveKey(sharedSecret) // uses HKDF
-
-	// Bob sends the ciphertext to Alice.
-	return ciphertext
+	// Encapsulates a shared secret using the encapsulation key (public key).
+	return ek.Encapsulate()
 }
 
 // Uses HKDF to make the shared secret even more hard to be discovered and
 // also more uniform and able to be used into the symmetric algorithms
-func deriveKey(sharedSecret []byte) []byte {
+func DeriveKey(sharedSecret []byte) []byte {
 	hkdf := hkdf.New(sha256.New, sharedSecret, nil, nil)
 	key := make([]byte, 32) // 256-bit
 	hkdf.Read(key)

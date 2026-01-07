@@ -42,7 +42,7 @@ func UnmarshalClientToServerMessage(data []byte) ClientToServerMessage {
 }
 
 type Connection struct {
-	Keys *cryptography.Keys
+	Keys cryptography.Keys
 	Conn *websocket.Conn
 }
 

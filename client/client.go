@@ -25,7 +25,7 @@ func connect() {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("Connected. Type your messages below:")
 
-	connection := ws.Connection{Keys: nil, Conn: conn}
+	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn}
 
 	// Generate keys
 	keys, err := cryptography.GenerateKeys()
