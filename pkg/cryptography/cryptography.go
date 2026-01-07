@@ -11,12 +11,6 @@ import (
 	"golang.org/x/crypto/hkdf"
 )
 
-type Party struct {
-	sharedSecret     []byte
-	sharedSecretHKDF []byte
-	message          []byte
-}
-
 type Keys struct {
 	Private      *mlkem.DecapsulationKey768
 	Public       []byte
@@ -65,7 +59,7 @@ func DeriveKey(sharedSecret []byte) []byte {
 func EncryptMessage(key, plaintext []byte) ([]byte, []byte, error) {
 	aead, err := chacha20poly1305.New(key)
 	if err != nil {
-		log.Fatal(err)
+		return nil, nil, err
 	}
 
 	// different nonce for each message (plaintext)
@@ -78,16 +72,16 @@ func EncryptMessage(key, plaintext []byte) ([]byte, []byte, error) {
 }
 
 // Symmetrically decripts a message using CHACHA20-POLY1305
-func DecryptMessage(key, nonce, ciphertext []byte) []byte {
+func DecryptMessage(key, nonce, ciphertext []byte) ([]byte, error) {
 	aead, err := chacha20poly1305.New(key)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	result, err := aead.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	return result
+	return result, nil
 }

@@ -8,6 +8,7 @@ import (
 	"pqc/pkg/cryptography"
 	"pqc/pkg/ws"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -35,9 +36,10 @@ func connect() {
 	}
 	connection.Keys = keys
 
-	msg := ws.ClientToServerMessage{
+	msg := ws.WSMessage{
 		Type:  ws.ExchangeKeys,
 		Value: keys.Public,
+		Nonce: nil,
 	}
 	jsonMsg := msg.Marshal()
 
@@ -56,11 +58,19 @@ func connect() {
 				return
 			}
 
-			fmt.Println("Server: ", string(msg))
+			msgJson := ws.UnmarshalWSMessage(msg)
+			msgJson.HandleServerMessage(&connection)
 		}
 	}()
 
+	fmt.Println("Exchanging keys...")
+
 	for {
+		if connection.Keys.SharedSecret == nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
 		fmt.Print("> ")
 		text, _ := reader.ReadString('\n')
 		text = strings.TrimSpace(text)
@@ -74,14 +84,20 @@ func connect() {
 			return
 		}
 
-		msg := ws.ClientToServerMessage{
-			// TODO: encrypt message
+		// Encrypt message
+		nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(text))
+		if err != nil {
+			log.Fatal("Could not encrypt message")
+		}
+
+		msg := ws.WSMessage{
 			Type:  ws.EncryptedMessage,
-			Value: []byte(text),
+			Value: ciphertext,
+			Nonce: nonce,
 		}
 		jsonMsg := msg.Marshal()
 
-		// Send text
+		// Send encrypted message
 		if err := connection.WriteMessage(string(jsonMsg)); err != nil {
 			return
 		}
