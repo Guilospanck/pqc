@@ -24,7 +24,6 @@ func connect() {
 	defer conn.Close()
 
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("Connected. Type your messages below:")
 
 	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn}
 
@@ -71,6 +70,7 @@ func connect() {
 			continue
 		}
 
+		fmt.Println("Connected. Type your messages below:")
 		fmt.Print("> ")
 		text, _ := reader.ReadString('\n')
 		text = strings.TrimSpace(text)

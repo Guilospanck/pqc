@@ -4,6 +4,22 @@ Just a simple way of working with Post-Quantum Cryptography (PQC) in Go.
 
 Disclaimer: not much thought was put into selecting the configurations/algorithms for these. Use at your own peril.
 
+## Running
+
+In one terminal:
+
+```sh
+cd server/
+go run .
+```
+
+Another terminal:
+
+```sh
+cd client/
+go run .
+```
+
 ## Explanation
 
 1) First step: exchange keys using ML-KEM (post quantum cryptography);
