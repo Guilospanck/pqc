@@ -1,11 +1,11 @@
-package main
+package server
 
 import (
 	"log"
 	"os"
 )
 
-func main() {
+func Run() {
 	// Prevent the logging in Go to go to the TUI
 	log.SetOutput(os.Stderr)
 	startServer()

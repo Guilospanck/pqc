@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"bufio"
@@ -13,7 +13,7 @@ type UIMessage struct {
 	Value string `json:"value"`
 }
 
-func main() {
+func Run() {
 	// Prevent the logging in Go to go to the TUI
 	log.SetOutput(os.Stderr)
 
@@ -31,9 +31,11 @@ func main() {
 
 		switch msg.Type {
 		case "connect":
+			log.Print("Trying to connect")
 			wsClient.connectToWSServer()
 
 		case "send":
+			log.Print("Sending: ", msg.Value)
 			wsClient.sendEncrypted(msg.Value)
 		}
 	}

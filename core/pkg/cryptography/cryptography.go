@@ -39,7 +39,7 @@ func KeyExchange(publicKey []byte) (sharedSecret, ciphertext []byte) {
 	// Get the public key out of the byte array.
 	ek, err := mlkem.NewEncapsulationKey768(publicKey)
 	if err != nil {
-		log.Fatal(err)
+		return nil, nil
 	}
 
 	// Encapsulates a shared secret using the encapsulation key (public key).

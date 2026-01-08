@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"fmt"
@@ -43,7 +43,11 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		msgJson := ws.UnmarshalWSMessage(msg)
+		msgJson, err := ws.UnmarshalWSMessage(msg)
+		if err != nil {
+			log.Printf("Error unmarshalling message: %s\n", err.Error())
+			continue
+		}
 		msgJson.HandleClientMessage(&connection)
 	}
 }
