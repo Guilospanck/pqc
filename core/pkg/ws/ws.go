@@ -83,6 +83,7 @@ func (msg *WSMessage) HandleClientMessage(connection *Connection) {
 }
 
 // To be handled by the client
+// TODO: send info to stdout so the TUI can grab it
 func (msg *WSMessage) HandleServerMessage(connection *Connection) {
 	switch msg.Type {
 	case ExchangeKeys:
@@ -94,6 +95,7 @@ func (msg *WSMessage) HandleServerMessage(connection *Connection) {
 
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
+		// TODO: send `connected` to TUI
 		fmt.Println("Key exchange done!")
 
 	case EncryptedMessage:
