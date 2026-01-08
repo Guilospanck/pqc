@@ -5,10 +5,16 @@ import {
   createCliRenderer,
   TextRenderable,
   BoxRenderable,
-  resolveRenderLib,
   KeyEvent,
   TextNodeRenderable,
 } from "@opentui/core";
+
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type Stream from "node:stream";
+
+let goProcess:
+  | ChildProcessByStdio<Stream.Writable, Stream.Readable, null>
+  | undefined = undefined;
 
 function setupCommonDemoKeys(renderer: CliRenderer) {
   renderer.keyInput.on("keypress", (key: KeyEvent) => {
@@ -16,20 +22,6 @@ function setupCommonDemoKeys(renderer: CliRenderer) {
       renderer.console.toggle();
     } else if (key.name === ".") {
       renderer.toggleDebugOverlay();
-    } else if (key.name === "g" && key.ctrl) {
-      console.log("dumping hit grid");
-      renderer.dumpHitGrid();
-    } else if (key.name === "l" && key.shift) {
-      renderer.start();
-    } else if (key.name === "s" && key.shift) {
-      renderer.stop();
-    } else if (key.name === "a" && key.shift) {
-      renderer.auto();
-    } else if (key.name === "a" && key.ctrl) {
-      const lib = resolveRenderLib();
-      const rawBytes = lib.getArenaAllocatedBytes();
-      const formattedBytes = `${(rawBytes / 1024 / 1024).toFixed(2)} MB`;
-      console.log("arena allocated bytes:", formattedBytes);
     }
   });
 }
@@ -42,10 +34,9 @@ let messages: Array<{ text: string; isSent: boolean; timestamp: Date }> = [];
 let currentInput: string = "";
 let inputCursorPosition: number = 0;
 
-export function run(renderer: CliRenderer): void {
+function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0d1117");
 
-  // Don't use a container, add directly to root for better control
   const rootBox = new BoxRenderable(renderer, {
     id: "rootBox",
     width: "100%",
@@ -59,7 +50,7 @@ export function run(renderer: CliRenderer): void {
   messageArea = new TextRenderable(renderer, {
     id: "messageArea",
     width: "100%",
-    height: "85%", // Take 85% of height
+    height: "85%",
     zIndex: 2,
     fg: "#f0f6fc",
   });
@@ -132,9 +123,7 @@ export function run(renderer: CliRenderer): void {
       updateInputBar();
     } else if (key === "\u001b" || event.name === "escape") {
       // Escape key - exit application
-      destroy();
-      renderer.stop();
-      process.exit(0);
+      exit(renderer);
     } else if (
       key &&
       key.length === 1 &&
@@ -178,8 +167,8 @@ function sendMessage(): void {
         "I understand completely.",
       ];
       const randomResponse =
-        responses[Math.floor(Math.random() * responses.length)];
-      addMessage(randomResponse, false);
+        responses[Math.floor(Math.random() * (responses.length - 1))];
+      addMessage(randomResponse as string, false);
     },
     1000 + Math.random() * 2000,
   );
@@ -200,6 +189,8 @@ function addMessage(text: string, isSent: boolean): void {
   }
 
   updateMessageArea();
+
+  sendToGo("send", text);
 }
 
 function updateMessageArea(): void {
@@ -210,7 +201,7 @@ function updateMessageArea(): void {
   const messageNodes: TextNodeRenderable[] = [];
 
   // Add recent messages (show last 10 that fit in the area)
-  const recentMessages = messages.slice(-10);
+  const recentMessages = messages.slice(-100);
 
   recentMessages.forEach((msg) => {
     const timeStr = msg.timestamp.toLocaleTimeString([], {
@@ -270,7 +261,7 @@ function updateInputBar(): void {
   }
 }
 
-export function destroy(): void {
+function destroy(): void {
   mainContainer?.destroyRecursively();
   mainContainer = null;
   messageArea = null;
@@ -281,13 +272,42 @@ export function destroy(): void {
   inputCursorPosition = 0;
 }
 
+function exit(renderer: CliRenderer, code?: number | null): void {
+  destroy();
+  renderer.stop();
+  process.exit(code ?? 0);
+}
+
+function sendToGo(type: "connect" | "send", message: string) {
+  if (!goProcess) return;
+
+  const msg = {
+    type,
+    value: message,
+  };
+
+  goProcess.stdin.write(JSON.stringify(msg) + "\n");
+}
+
 if (import.meta.main) {
+  // start go process
+  goProcess = spawn("../core/pqc", [], {
+    stdio: ["pipe", "pipe", "inherit"],
+  });
+
+  // Connects to WS server on startup
+  sendToGo("connect", "");
+
   const renderer = await createCliRenderer({
     targetFps: 30,
     enableMouseMovement: true,
     exitOnCtrlC: true,
   });
+
+  goProcess.on("close", (code) => {
+    exit(renderer, code);
+  });
+
   run(renderer);
   setupCommonDemoKeys(renderer);
 }
-

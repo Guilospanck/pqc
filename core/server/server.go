@@ -13,7 +13,7 @@ import (
 func startServer() {
 	http.HandleFunc("/ws", wsHandler)
 
-	fmt.Println("WS server started at :8080/ws")
+	fmt.Println("WS server started at localhost:8080/ws")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
