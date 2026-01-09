@@ -5,7 +5,6 @@ import {
   createCliRenderer,
   TextRenderable,
   BoxRenderable,
-  KeyEvent,
   TextNodeRenderable,
 } from "@opentui/core";
 
@@ -16,16 +15,6 @@ let goProcess:
   | ChildProcessByStdio<Stream.Writable, Stream.Readable, null>
   | undefined = undefined;
 
-function setupCommonDemoKeys(renderer: CliRenderer) {
-  renderer.keyInput.on("keypress", (key: KeyEvent) => {
-    if (key.name === "`" || key.name === '"') {
-      renderer.console.toggle();
-    } else if (key.name === ".") {
-      renderer.toggleDebugOverlay();
-    }
-  });
-}
-
 let mainContainer: BoxRenderable | null = null;
 let messageArea: TextRenderable | null = null;
 let inputBar: TextRenderable | null = null;
@@ -34,60 +23,15 @@ let messages: Array<{ text: string; isSent: boolean; timestamp: Date }> = [];
 let currentInput: string = "";
 let inputCursorPosition: number = 0;
 
-function run(renderer: CliRenderer): void {
-  renderer.setBackgroundColor("#0d1117");
-
-  const rootBox = new BoxRenderable(renderer, {
-    id: "rootBox",
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#161b22",
-    zIndex: 1,
-    border: false,
-  });
-
-  // Create message area that takes up most of the screen
-  messageArea = new TextRenderable(renderer, {
-    id: "messageArea",
-    width: "100%",
-    height: "85%",
-    zIndex: 2,
-    fg: "#f0f6fc",
-  });
-  rootBox.add(messageArea);
-
-  // Create input bar at the bottom
-  inputBar = new TextRenderable(renderer, {
-    id: "inputBar",
-    content: "> ",
-    width: "100%",
-    height: 5, // Fixed height of 5 lines
-    zIndex: 3, // Higher z-index to appear on top
-    fg: "#58a6ff",
-  });
-  rootBox.add(inputBar);
-
-  // Create status area at the very bottom
-  statusText = new TextRenderable(renderer, {
-    id: "status",
-    content: "Ready - Type a message and press Enter to send",
-    width: "100%",
-    height: 3, // Fixed height of 3 lines
-    zIndex: 3, // Higher z-index to appear on top
-    fg: "#8b949e",
-  });
-  rootBox.add(statusText);
-
-  // Add some initial messages
-  addMessage("Welcome to Chat TUI!", false);
-  addMessage("Type your message and press Enter to send", false);
-  addMessage("Your messages will appear on the right in blue", false);
-
-  // Set up keyboard controls for chat
+function setupKeyInputs(renderer: CliRenderer) {
   renderer.keyInput.on("keypress", (event) => {
     const key = event.sequence;
 
-    if (key === "\r" || key === "\n") {
+    if (event.name === "`" || event.name === '"') {
+      renderer.console.toggle();
+    } else if (event.name === ".") {
+      renderer.toggleDebugOverlay();
+    } else if (key === "\r" || key === "\n") {
       // Enter key - send message
       if (currentInput.trim()) {
         sendMessage();
@@ -141,9 +85,87 @@ function run(renderer: CliRenderer): void {
       updateInputBar();
     }
   });
+}
+
+function setupUI(renderer: CliRenderer): void {
+  renderer.setBackgroundColor("#0d1117");
+
+  const rootBox = new BoxRenderable(renderer, {
+    id: "rootBox",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#161b22",
+    zIndex: 1,
+    border: false,
+  });
+
+  // Create message area that takes up most of the screen
+  messageArea = new TextRenderable(renderer, {
+    id: "messageArea",
+    width: "100%",
+    height: "85%",
+    zIndex: 2,
+    fg: "#f0f6fc",
+  });
+  rootBox.add(messageArea);
+
+  // Create input bar at the bottom
+  inputBar = new TextRenderable(renderer, {
+    id: "inputBar",
+    content: "> ",
+    width: "100%",
+    height: 5, // Fixed height of 5 lines
+    zIndex: 3, // Higher z-index to appear on top
+    fg: "#58a6ff",
+  });
+  rootBox.add(inputBar);
+
+  // Create status area at the very bottom
+  statusText = new TextRenderable(renderer, {
+    id: "status",
+    content: "Ready - Type a message and press Enter to send",
+    width: "100%",
+    height: 3, // Fixed height of 3 lines
+    zIndex: 3, // Higher z-index to appear on top
+    fg: "#8b949e",
+  });
+  rootBox.add(statusText);
+
+  renderer.root.add(rootBox);
+}
+
+function setup(renderer: CliRenderer): void {
+  setupKeyInputs(renderer);
+  setupUI(renderer);
+
+  // Add some initial messages
+  addMessage("Welcome to Chat TUI!", false);
+  addMessage("Type your message and press Enter to send", false);
+  addMessage("Your messages will appear in blue", false);
 
   updateInputBar();
-  renderer.root.add(rootBox);
+}
+
+async function run(): Promise<void> {
+  // start go process
+  goProcess = spawn("../core/pqc", [], {
+    stdio: ["pipe", "pipe", "inherit"],
+  });
+
+  // Connects to WS server on startup
+  sendToGo("connect", "");
+
+  const renderer = await createCliRenderer({
+    targetFps: 30,
+    enableMouseMovement: true,
+    exitOnCtrlC: true,
+  });
+
+  goProcess.on("close", (code) => {
+    exit(renderer, code);
+  });
+
+  setup(renderer);
 }
 
 function sendMessage(): void {
@@ -153,25 +175,6 @@ function sendMessage(): void {
   currentInput = "";
   inputCursorPosition = 0;
   updateInputBar();
-
-  // Simulate a response after a short delay
-  setTimeout(
-    () => {
-      const responses = [
-        "That's interesting!",
-        "Tell me more about that.",
-        "I see what you mean.",
-        "Thanks for sharing!",
-        "How does that make you feel?",
-        "That's a great point!",
-        "I understand completely.",
-      ];
-      const randomResponse =
-        responses[Math.floor(Math.random() * (responses.length - 1))];
-      addMessage(randomResponse as string, false);
-    },
-    1000 + Math.random() * 2000,
-  );
 }
 
 function addMessage(text: string, isSent: boolean): void {
@@ -200,7 +203,6 @@ function updateMessageArea(): void {
 
   const messageNodes: TextNodeRenderable[] = [];
 
-  // Add recent messages (show last 10 that fit in the area)
   const recentMessages = messages.slice(-100);
 
   recentMessages.forEach((msg) => {
@@ -210,7 +212,7 @@ function updateMessageArea(): void {
     });
 
     if (msg.isSent) {
-      // Sent message - right aligned, blue
+      // Sent message - blue
       const messageNode = TextNodeRenderable.fromNodes([
         TextNodeRenderable.fromString(`${timeStr} `, { fg: "#8b949e" }),
         TextNodeRenderable.fromString("You: ", {
@@ -221,7 +223,7 @@ function updateMessageArea(): void {
       ]);
       messageNodes.push(messageNode);
     } else {
-      // Received message - left aligned, green
+      // Received message - green
       const messageNode = TextNodeRenderable.fromNodes([
         TextNodeRenderable.fromString(`${timeStr} `, { fg: "#8b949e" }),
         TextNodeRenderable.fromString("Them: ", {
@@ -290,24 +292,5 @@ function sendToGo(type: "connect" | "send", message: string) {
 }
 
 if (import.meta.main) {
-  // start go process
-  goProcess = spawn("../core/pqc", [], {
-    stdio: ["pipe", "pipe", "inherit"],
-  });
-
-  // Connects to WS server on startup
-  sendToGo("connect", "");
-
-  const renderer = await createCliRenderer({
-    targetFps: 30,
-    enableMouseMovement: true,
-    exitOnCtrlC: true,
-  });
-
-  goProcess.on("close", (code) => {
-    exit(renderer, code);
-  });
-
-  run(renderer);
-  setupCommonDemoKeys(renderer);
+  run();
 }
