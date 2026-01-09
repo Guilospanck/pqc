@@ -161,7 +161,7 @@ async function run(): Promise<void> {
     exitOnCtrlC: true,
   });
 
-  goProcess.on("close", (code) => {
+  goProcess.on("exit", (code) => {
     exit(renderer, code);
   });
 

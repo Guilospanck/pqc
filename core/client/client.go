@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"log"
+	"os"
 	"pqc/pkg/cryptography"
 	"pqc/pkg/ws"
 	"strings"
@@ -91,6 +92,7 @@ func (client *WSClient) sendEncrypted(message string) {
 	if text == "/quit" || text == "/exit" {
 		fmt.Println("Closing connection.")
 		client.closeConnection()
+		os.Exit(0)
 		return
 	}
 
