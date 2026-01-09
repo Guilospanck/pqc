@@ -6,7 +6,19 @@ Disclaimer: not much thought was put into selecting the configurations/algorithm
 
 ## Development
 
+### Installing
+
 You need Go and Bun installed.
+
+```sh
+cd core/ && go mod tidy
+```
+
+```sh
+cd tui/ && bun i
+```
+
+### Running
 
 In one terminal:
 
