@@ -1,10 +1,10 @@
 package client
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"pqc/pkg/cryptography"
+	"pqc/pkg/ui"
 	"pqc/pkg/ws"
 	"strings"
 
@@ -18,12 +18,13 @@ type WSClient struct {
 func (client *WSClient) connectToWSServer() {
 	url := "ws://localhost:8080/ws"
 
-	fmt.Println("Connecting to", url)
+	log.Print("Connecting to", url)
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		log.Printf("Dial error: %s\n", err.Error())
 		return
 	}
+	ui.EmitToUI("connected", "")
 
 	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn}
 
@@ -65,9 +66,6 @@ func (client *WSClient) connectToWSServer() {
 			msgJson.HandleServerMessage(&client.conn)
 		}
 	}()
-
-	fmt.Println("Exchanging keys...")
-
 }
 
 func (client *WSClient) closeConnection() {
@@ -78,19 +76,19 @@ func (client *WSClient) closeConnection() {
 
 func (client *WSClient) sendEncrypted(message string) {
 	if client.conn.Keys.SharedSecret == nil {
-		fmt.Println("Shared secret not ready")
+		log.Print("Shared secret not ready")
 		return
 	}
 
 	text := strings.TrimSpace(message)
 	if text == "" {
-		fmt.Println("Empty message.")
+		log.Print("Empty message.")
 		return
 	}
 
 	// Quit command
 	if text == "/quit" || text == "/exit" {
-		fmt.Println("Closing connection.")
+		log.Print("Closing connection.")
 		client.closeConnection()
 		os.Exit(0)
 		return

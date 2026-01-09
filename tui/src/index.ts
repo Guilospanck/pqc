@@ -134,9 +134,51 @@ function setupUI(renderer: CliRenderer): void {
   renderer.root.add(rootBox);
 }
 
+type ServerToUIMessageType = "connected" | "keys_exchanged" | "message";
+type UIToServerMessageType = "connect" | "send";
+
+type UIMessage = {
+  type: UIToServerMessageType | ServerToUIMessageType;
+  value: string;
+};
+
+function setupGo(renderer: CliRenderer): void {
+  // start go process
+  goProcess = spawn("../core/pqc", [], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  goProcess.on("exit", (code) => {
+    exit(renderer, code);
+  });
+
+  goProcess.stdout.on("data", (data) => {
+    const message: UIMessage = JSON.parse(data);
+
+    switch (message.type) {
+      case "connected": {
+        addMessage("Connected to server.", false);
+        break;
+      }
+      case "keys_exchanged": {
+        addMessage("Keys exchanged.", false);
+        break;
+      }
+      case "message": {
+        addMessage(message.value, false);
+        break;
+      }
+    }
+  });
+
+  // Connects to WS server on startup
+  sendToGo("connect", "");
+}
+
 function setup(renderer: CliRenderer): void {
   setupKeyInputs(renderer);
   setupUI(renderer);
+  setupGo(renderer);
 
   // Add some initial messages
   addMessage("Welcome to Chat TUI!", false);
@@ -147,22 +189,10 @@ function setup(renderer: CliRenderer): void {
 }
 
 async function run(): Promise<void> {
-  // start go process
-  goProcess = spawn("../core/pqc", [], {
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
-  // Connects to WS server on startup
-  sendToGo("connect", "");
-
   const renderer = await createCliRenderer({
     targetFps: 30,
     enableMouseMovement: true,
     exitOnCtrlC: true,
-  });
-
-  goProcess.on("exit", (code) => {
-    exit(renderer, code);
   });
 
   setup(renderer);

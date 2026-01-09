@@ -5,13 +5,9 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"pqc/pkg/ui"
 	"pqc/pkg/ws"
 )
-
-type UIMessage struct {
-	Type  string `json:"type"`
-	Value string `json:"value"`
-}
 
 func Run() {
 	// Prevent the logging in Go to go to the TUI
@@ -24,7 +20,7 @@ func Run() {
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
-		var msg UIMessage
+		var msg ui.UIMessage
 		if err := json.Unmarshal(line, &msg); err != nil {
 			continue
 		}

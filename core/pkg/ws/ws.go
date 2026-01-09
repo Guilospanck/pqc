@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"pqc/pkg/cryptography"
+	"pqc/pkg/ui"
 
 	"github.com/gorilla/websocket"
 )
@@ -86,7 +87,6 @@ func (msg *WSMessage) HandleClientMessage(connection *Connection) {
 }
 
 // To be handled by the client
-// TODO: send info to stdout so the TUI can grab it
 func (msg *WSMessage) HandleServerMessage(connection *Connection) {
 	switch msg.Type {
 	case ExchangeKeys:
@@ -99,8 +99,7 @@ func (msg *WSMessage) HandleServerMessage(connection *Connection) {
 
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		// TODO: send `connected` to TUI
-		fmt.Println("Key exchange done!")
+		ui.EmitToUI("keys_exchanged", "")
 
 	case EncryptedMessage:
 		nonce := msg.Nonce
@@ -114,6 +113,7 @@ func (msg *WSMessage) HandleServerMessage(connection *Connection) {
 		}
 
 		log.Printf("Decrypted message (from server): \"%s\"\n", decrypted)
+		ui.EmitToUI("message", string(decrypted))
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}

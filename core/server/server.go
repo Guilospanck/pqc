@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"pqc/pkg/cryptography"
@@ -13,7 +12,7 @@ import (
 func startServer() {
 	http.HandleFunc("/ws", wsHandler)
 
-	fmt.Println("WS server started at localhost:8080/ws")
+	log.Print("WS server started at localhost:8080/ws")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
@@ -27,12 +26,12 @@ var upgrader = websocket.Upgrader{
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println("Error upgrading WS: ", err)
+		log.Print("Error upgrading WS: ", err)
 		return
 	}
 	defer conn.Close()
 
-	fmt.Println("New connection!")
+	log.Print("New connection!")
 
 	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn}
 
