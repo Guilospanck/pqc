@@ -1,26 +1,34 @@
 # PQC
 
-Just a simple way of working with Post-Quantum Cryptography (PQC) in Go.
+Just a simple way of working with Post-Quantum Cryptography (PQC) in Go. Also makes use of OpenTUI to create, well, a TUI.
 
 Disclaimer: not much thought was put into selecting the configurations/algorithms for these. Use at your own peril.
 
-## Running
+## Development
+
+You need Go and Bun installed.
 
 In one terminal:
 
 ```sh
-cd server/
-go run .
+# With `just`
+just start-tui
+# Manually
+# First build the go code:
+cd core && go build .
+# Now run the tui
+cd tui && bun run dev
 ```
 
-Another terminal:
+## TUI
 
-```sh
-cd client/
-go run .
-```
+### Commands
 
-## Explanation
+- `/quit` or `/exit`: quits the TUI.
+
+## Cryptography
+
+### Explanation
 
 1) First step: exchange keys using ML-KEM (post quantum cryptography);
 
@@ -33,7 +41,7 @@ go run .
 5) Fifth step: on the other side, decrypt the message using the same symmetric-key algorithm.
 
 
-### Key exchange
+#### Key exchange
 
 The process of key exchange is made using the post-quantum cryptography [ML-KEM](https://pkg.go.dev/crypto/mlkem).
 This process can be described between two parties (Alice and Bob) as:
@@ -45,13 +53,13 @@ This process can be described between two parties (Alice and Bob) as:
 - Alice uses its own private key (the decapsulation key) to get the shared key ("sharedSecret") from that ciphertext;
 - Now both Alice and Bob have the same shared key ("sharedSecret") without ever sharing that over the wire, only sharing public information (the public key - a.k.a "encapsulationKey" - and the ciphertext).
 
-### KDF
+#### KDF
 
 Using a key derivation function (KDF) improves the security of the shared secret by making it more uniform, adequating its size to be used to other symmetric functions and removing possible characteristics that could make it easier for an attacker to try toguess it.
 
 We are using [HKDF](https://pkg.go.dev/golang.org/x/crypto/hkdf).
 
-### Symmetric-key cryptography
+#### Symmetric-key cryptography
 
 Because each party has its own secret key, we can know use a faster and still secure way of encrypting data. We are using [ChaCha20Poly1305](https://pkg.go.dev/golang.org/x/crypto/chacha20poly1305), which is considered post-quantum secure.
 
