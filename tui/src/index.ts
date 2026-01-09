@@ -12,7 +12,7 @@ import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type Stream from "node:stream";
 
 let goProcess:
-  | ChildProcessByStdio<Stream.Writable, Stream.Readable, null>
+  | ChildProcessByStdio<Stream.Writable, Stream.Readable, Stream.Readable>
   | undefined = undefined;
 
 let mainContainer: BoxRenderable | null = null;
@@ -149,7 +149,7 @@ function setup(renderer: CliRenderer): void {
 async function run(): Promise<void> {
   // start go process
   goProcess = spawn("../core/pqc", [], {
-    stdio: ["pipe", "pipe", "inherit"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
   // Connects to WS server on startup

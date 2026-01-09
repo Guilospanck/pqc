@@ -79,7 +79,7 @@ func (msg *WSMessage) HandleClientMessage(connection *Connection) {
 			return
 		}
 
-		log.Printf("Decrypted message: \"%s\"\n", decrypted)
+		log.Printf("Decrypted message (from client): \"%s\"\n", decrypted)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}
@@ -113,7 +113,7 @@ func (msg *WSMessage) HandleServerMessage(connection *Connection) {
 			return
 		}
 
-		log.Printf("Decrypted message: \"%s\"\n", decrypted)
+		log.Printf("Decrypted message (from server): \"%s\"\n", decrypted)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}
