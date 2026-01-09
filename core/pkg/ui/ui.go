@@ -5,16 +5,24 @@ import (
 	"fmt"
 )
 
-// UI to Go `Type`: "connect" | "send"
-// Go to UI `Type`: "connected" | "keys_exchanged" | "message"
+type UIMessageType string
+
+const (
+	ToUIConnected     UIMessageType = "connected"
+	ToUIKeysExchanged UIMessageType = "keys_exchanged"
+	ToUIMessage       UIMessageType = "message"
+
+	FromUIConnect = "connect"
+	FromUISend    = "send"
+)
 
 type UIMessage struct {
-	Type  string `json:"type"`
-	Value string `json:"value"`
+	Type  UIMessageType `json:"type"`
+	Value string        `json:"value"`
 }
 
 // We talk to the UI via stdout
-func EmitToUI(msgType, value string) {
+func EmitToUI(msgType UIMessageType, value string) {
 	msg := UIMessage{
 		Type:  msgType,
 		Value: value,

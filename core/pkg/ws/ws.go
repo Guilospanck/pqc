@@ -99,7 +99,7 @@ func (msg *WSMessage) HandleServerMessage(connection *Connection) {
 
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		ui.EmitToUI("keys_exchanged", "")
+		ui.EmitToUI(ui.ToUIKeysExchanged, "")
 
 	case EncryptedMessage:
 		nonce := msg.Nonce
@@ -113,7 +113,7 @@ func (msg *WSMessage) HandleServerMessage(connection *Connection) {
 		}
 
 		log.Printf("Decrypted message (from server): \"%s\"\n", decrypted)
-		ui.EmitToUI("message", string(decrypted))
+		ui.EmitToUI(ui.ToUIMessage, string(decrypted))
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}

@@ -24,7 +24,7 @@ func (client *WSClient) connectToWSServer() {
 		log.Printf("Dial error: %s\n", err.Error())
 		return
 	}
-	ui.EmitToUI("connected", "")
+	ui.EmitToUI(ui.ToUIConnected, "")
 
 	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn}
 
