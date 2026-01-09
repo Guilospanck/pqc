@@ -8,7 +8,7 @@ import {
   TextNodeRenderable,
 } from "@opentui/core";
 
-import { spawn, type ChildProcessByStdio } from "node:child_process";
+import { spawn, execSync, type ChildProcessByStdio } from "node:child_process";
 import type Stream from "node:stream";
 
 let goProcess:
@@ -277,6 +277,12 @@ function destroy(): void {
 function exit(renderer: CliRenderer, code?: number | null): void {
   destroy();
   renderer.stop();
+  try {
+    execSync("clear", { stdio: "inherit" });
+  } catch (e) {
+    // Fallback if clear command fails
+    process.stdout.write("\x1b[2J\x1b[H");
+  }
   process.exit(code ?? 0);
 }
 
