@@ -46,7 +46,7 @@ func UnmarshalWSMessage(data []byte) (WSMessage, error) {
 }
 
 // To be handled by the server
-func (msg *WSMessage) HandleClientMessage(connection *Connection) {
+func (connection *Connection) HandleClientMessage(msg WSMessage) {
 	switch msg.Type {
 	case ExchangeKeys:
 		// Encapsulate ciphertext with the public key from client
@@ -87,7 +87,7 @@ func (msg *WSMessage) HandleClientMessage(connection *Connection) {
 }
 
 // To be handled by the client
-func (msg *WSMessage) HandleServerMessage(connection *Connection) {
+func (connection *Connection) HandleServerMessage(msg WSMessage) {
 	switch msg.Type {
 	case ExchangeKeys:
 		ciphertext := msg.Value
