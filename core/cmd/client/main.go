@@ -15,7 +15,7 @@ func main() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 
-	wsClient := WSClient{conn: ws.Connection{}}
+	wsClient := WSClient{conn: ws.Connection{}, tagColor: GetRandomColor()}
 
 	for scanner.Scan() {
 		line := scanner.Bytes()

@@ -1,14 +1,14 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type Stream from "node:stream";
-import { type UIMessage } from "./shared-types";
+import { type TUIGoCommunication, type TUIMessage } from "./shared-types";
 import { EventHandler } from "./singletons/event-handler";
 
 let goProcess:
   | ChildProcessByStdio<Stream.Writable, Stream.Readable, Stream.Readable>
   | undefined = undefined;
 
-const addMessage = (message: string, isSent: boolean) => {
-  EventHandler().notify("add_message", { message, isSent });
+const addMessage = (message: Omit<TUIMessage, "timestamp">) => {
+  EventHandler().notify("add_message", { ...message });
 };
 
 export function setupGo(): void {
@@ -22,19 +22,40 @@ export function setupGo(): void {
   });
 
   goProcess.stdout.on("data", (data) => {
-    const message: UIMessage = JSON.parse(data);
+    let message: TUIGoCommunication;
+    try {
+      message = JSON.parse(data);
+    } catch {
+      console.error("Error parsing data from Go stdout: ", String(data));
+      return;
+    }
+
+    let tuiMessage: Omit<TUIMessage, "timestamp"> = {
+      text: "",
+      isSent: false,
+      color: message.color,
+    };
 
     switch (message.type) {
       case "connected": {
-        addMessage("Connected to server.", false);
+        addMessage({
+          ...tuiMessage,
+          text: "Connected to server.",
+        });
         break;
       }
       case "keys_exchanged": {
-        addMessage("Keys exchanged.", false);
+        addMessage({
+          ...tuiMessage,
+          text: "Keys exchanged.",
+        });
         break;
       }
       case "message": {
-        addMessage(message.value, false);
+        addMessage({
+          ...tuiMessage,
+          text: message.value,
+        });
         break;
       }
     }

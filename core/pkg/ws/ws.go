@@ -77,10 +77,10 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
 		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
 		if err != nil {
-			log.Printf("Could not decrypt message from client: %s\n", err.Error())
+			log.Printf("Could not decrypt message from client (%s): %s\n", connection.Username, err.Error())
 			return nil
 		}
-		log.Printf("Decrypted message (from client): \"%s\"\n", decrypted)
+		log.Printf("Decrypted message (%s): \"%s\"\n", connection.Username, decrypted)
 
 		return decrypted
 
@@ -92,8 +92,8 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 }
 
 // This is used by the server to fan out a message from one client to others
-func (connection *Connection) RelayMessage(message string) {
-	log.Printf("Relaying message: \"%s\" to client \"%s\"\n", message, connection.Keys.Public[:7])
+func (connection *Connection) RelayMessage(message string, from string) {
+	log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", message, from, connection.Username)
 
 	nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(message))
 	if err != nil {
@@ -116,7 +116,7 @@ func (connection *Connection) RelayMessage(message string) {
 }
 
 // To be handled by the client
-func (connection *Connection) HandleServerMessage(msg WSMessage) {
+func (connection *Connection) HandleServerMessage(msg WSMessage, color string) {
 	switch msg.Type {
 	case ExchangeKeys:
 		ciphertext := msg.Value
@@ -128,7 +128,7 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		ui.EmitToUI(ui.ToUIKeysExchanged, "")
+		ui.EmitToUI(ui.ToUIKeysExchanged, "", "")
 
 	case EncryptedMessage:
 		nonce := msg.Nonce
@@ -141,8 +141,7 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 			return
 		}
 
-		log.Printf("Decrypted message (from server): \"%s\"\n", decrypted)
-		ui.EmitToUI(ui.ToUIMessage, string(decrypted))
+		ui.EmitToUI(ui.ToUIMessage, string(decrypted), color)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}

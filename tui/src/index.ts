@@ -9,6 +9,7 @@ import { addMessage, isMessage } from "./message";
 import { State } from "./singletons/state";
 import { setupKeyInputs } from "./key-listener";
 import { EventHandler } from "./singletons/event-handler";
+import { COLORS } from "./constants";
 
 const EVENT_HANDLER_ID = "index.ts";
 
@@ -53,13 +54,13 @@ function setupEventListeners(): void {
     callback(value) {
       if (!isMessage(value)) {
         console.error(
-          "Expected value of type `{message: string; isSent: boolean}`. Received: ",
+          'Expected value of type `Omit<TUIMessage, "timestamp"`. Received: ',
           value,
         );
         return;
       }
 
-      addMessage(value.message, value.isSent);
+      addMessage(value);
     },
   });
 }
@@ -67,7 +68,11 @@ function setupEventListeners(): void {
 function sendMessage(): void {
   if (!State.currentInput.trim()) return;
 
-  addMessage(State.currentInput, true);
+  addMessage({
+    text: State.currentInput,
+    isSent: true,
+    color: COLORS.userMessage,
+  });
   sendToGo("send", State.currentInput);
 
   State.currentInput = "";
@@ -104,9 +109,21 @@ async function run(): Promise<void> {
   setupGo();
   setupEventListeners();
 
-  addMessage("Welcome to Chat TUI!", false);
-  addMessage("Type your message and press Enter to send", false);
-  addMessage("Your messages will appear in blue", false);
+  addMessage({
+    text: "Welcome to Chat TUI!",
+    isSent: false,
+    color: COLORS.tuiMessage,
+  });
+  addMessage({
+    text: "Type your message and press Enter to send",
+    isSent: false,
+    color: COLORS.tuiMessage,
+  });
+  addMessage({
+    text: "Your messages will appear in blue",
+    isSent: false,
+    color: COLORS.tuiMessage,
+  });
 
   updateInputBar();
 }

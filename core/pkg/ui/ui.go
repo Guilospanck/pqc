@@ -19,13 +19,20 @@ const (
 type UIMessage struct {
 	Type  UIMessageType `json:"type"`
 	Value string        `json:"value"`
+	Color string        `json:"color"`
 }
 
 // We talk to the UI via stdout
-func EmitToUI(msgType UIMessageType, value string) {
+func EmitToUI(msgType UIMessageType, value string, color string) {
+	messageColor := color
+	if len(color) == 0 {
+		messageColor = "#7ee787"
+	}
+
 	msg := UIMessage{
 		Type:  msgType,
 		Value: value,
+		Color: messageColor,
 	}
 
 	msgMarshalled, err := json.Marshal(msg)

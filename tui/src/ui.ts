@@ -4,6 +4,7 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import { ClearState, State } from "./singletons/state";
+import { COLORS } from "./constants";
 
 let mainContainer: BoxRenderable | null = null;
 let messageArea: TextRenderable | null = null;
@@ -28,23 +29,19 @@ export function updateMessageArea(): void {
     if (msg.isSent) {
       // Sent message - blue
       const messageNode = TextNodeRenderable.fromNodes([
-        TextNodeRenderable.fromString(`${timeStr} `, { fg: "#8b949e" }),
+        TextNodeRenderable.fromString(`${timeStr} `, { fg: COLORS.timestamp }),
         TextNodeRenderable.fromString("You: ", {
-          fg: "#58a6ff",
+          fg: msg.color,
           attributes: 1,
         }),
-        TextNodeRenderable.fromString(msg.text, { fg: "#79c0ff" }),
+        TextNodeRenderable.fromString(msg.text, { fg: msg.color }),
       ]);
       messageNodes.push(messageNode);
     } else {
       // Received message - green
       const messageNode = TextNodeRenderable.fromNodes([
-        TextNodeRenderable.fromString(`${timeStr} `, { fg: "#8b949e" }),
-        TextNodeRenderable.fromString("Them: ", {
-          fg: "#56d364",
-          attributes: 1,
-        }),
-        TextNodeRenderable.fromString(msg.text, { fg: "#7ee787" }),
+        TextNodeRenderable.fromString(`${timeStr} `, { fg: COLORS.timestamp }),
+        TextNodeRenderable.fromString(msg.text, { fg: msg.color }),
       ]);
       messageNodes.push(messageNode);
     }

@@ -36,9 +36,10 @@ func (srv *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	log.Print("New connection!")
+	username := GetRandomName()
+	log.Printf("New connection: %s\n", username)
 
-	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Username: GetRandomName()}
+	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Username: username}
 
 	srv.connections = append(srv.connections, &connection)
 
@@ -49,6 +50,7 @@ func (srv *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 			// Remove client from connections
 			for i, v := range srv.connections {
 				if v == &connection {
+					// TODO: inform others that he logged out
 					srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
 					break
 				}
@@ -74,9 +76,9 @@ func (srv *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			msgWithPublicKey := fmt.Sprintf("(%s) %s", c.Username, string(decryptedMessageSent))
+			msgWithPublicKey := fmt.Sprintf("%s: %s", connection.Username, string(decryptedMessageSent))
 
-			c.RelayMessage(msgWithPublicKey)
+			c.RelayMessage(msgWithPublicKey, string(connection.Username))
 		}
 	}
 }

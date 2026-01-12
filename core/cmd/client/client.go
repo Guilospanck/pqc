@@ -13,7 +13,8 @@ import (
 )
 
 type WSClient struct {
-	conn ws.Connection
+	conn     ws.Connection
+	tagColor []byte
 }
 
 var QUIT_COMMANDS = []string{"/quit", "/q", "/exit", ":wq", ":q", ":wqa"}
@@ -27,7 +28,7 @@ func (client *WSClient) connectToWSServer() {
 		log.Printf("Dial error: %s\n", err.Error())
 		return
 	}
-	ui.EmitToUI(ui.ToUIConnected, "")
+	ui.EmitToUI(ui.ToUIConnected, "", "")
 
 	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn}
 
@@ -66,7 +67,7 @@ func (client *WSClient) connectToWSServer() {
 				log.Printf("Error unmarshalling message: %s\n", err.Error())
 				continue
 			}
-			client.conn.HandleServerMessage(msgJson)
+			client.conn.HandleServerMessage(msgJson, string(client.tagColor))
 		}
 	}()
 }
@@ -92,7 +93,6 @@ func (client *WSClient) sendEncrypted(message string) {
 	// Quit command
 	if slices.Contains(QUIT_COMMANDS, text) {
 		log.Print("Closing connection.")
-		// TODO: send a close connection to the server
 		client.closeConnection()
 		os.Exit(0)
 		return
