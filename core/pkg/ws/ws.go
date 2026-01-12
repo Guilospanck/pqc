@@ -149,8 +149,9 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 }
 
 type Connection struct {
-	Keys cryptography.Keys
-	Conn *websocket.Conn
+	Keys     cryptography.Keys
+	Conn     *websocket.Conn
+	Username []byte
 }
 
 func (ws *Connection) WriteMessage(text string) error {

@@ -38,7 +38,7 @@ func (srv *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Print("New connection!")
 
-	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn}
+	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Username: GetRandomName()}
 
 	srv.connections = append(srv.connections, &connection)
 
@@ -74,8 +74,7 @@ func (srv *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// Add the first 7 bytes of the PK of who (client) that sent the message
-			msgWithPublicKey := fmt.Sprintf("(%s) %s", connection.Keys.Public[:7], string(decryptedMessageSent))
+			msgWithPublicKey := fmt.Sprintf("(%s) %s", c.Username, string(decryptedMessageSent))
 
 			c.RelayMessage(msgWithPublicKey)
 		}
