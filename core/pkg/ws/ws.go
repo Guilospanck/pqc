@@ -166,10 +166,6 @@ func (ws *Connection) WriteMessage(text string) error {
 func (ws *Connection) ReadMessage() ([]byte, error) {
 	_, msg, err := ws.Conn.ReadMessage()
 	if err != nil {
-		// Don't log normal connection closures
-		if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-			log.Println("Read error:", err)
-		}
 		return []byte(""), err
 	}
 

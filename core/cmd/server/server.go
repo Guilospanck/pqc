@@ -46,6 +46,14 @@ func (srv *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 		msg, err := connection.ReadMessage()
 		if err != nil {
 			log.Printf("Error reading from conn: %s\n", err.Error())
+			// Remove client from connections
+			for i, v := range srv.connections {
+				if v == &connection {
+					srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
+					break
+				}
+			}
+
 			return
 		}
 
