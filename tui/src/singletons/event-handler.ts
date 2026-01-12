@@ -9,13 +9,13 @@ type SubscriberId = string;
 
 type Subscriber = {
   id: SubscriberId;
-  callback: Function;
+  callback: (value?: unknown) => void;
 };
 
 interface IEventHandler {
   subscribe(topic: Topic, subscriber: Subscriber): void;
   unsubscribe(id: SubscriberId, topic: Topic): void;
-  notify(topic: Topic): void;
+  notify(topic: Topic, value?: unknown): void;
 }
 
 export const EventHandler = (() => {
@@ -47,11 +47,11 @@ export const EventHandler = (() => {
 
         subscriptions.set(topic, new Set(filtered));
       },
-      notify(topic) {
+      notify(topic, value) {
         const currentSubs = subscriptions.get(topic);
         if (!currentSubs) return;
 
-        Array.from(currentSubs).forEach((sub) => sub.callback());
+        Array.from(currentSubs).forEach((sub) => sub.callback(value));
       },
     };
 

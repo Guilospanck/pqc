@@ -1,20 +1,14 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type Stream from "node:stream";
-import { type UIMessage } from "./message";
+import { type UIMessage } from "./shared-types";
+import { EventHandler } from "./singletons/event-handler";
 
 let goProcess:
   | ChildProcessByStdio<Stream.Writable, Stream.Readable, Stream.Readable>
   | undefined = undefined;
 
 const addMessage = (message: string, isSent: boolean) => {
-  globalThis.appEvents.dispatchEvent(
-    new CustomEvent("add_message", {
-      detail: {
-        message,
-        isSent,
-      },
-    }),
-  );
+  EventHandler().notify("add_message", { message, isSent });
 };
 
 export function setupGo(): void {
@@ -24,9 +18,7 @@ export function setupGo(): void {
   });
 
   goProcess.on("exit", (code) => {
-    globalThis.appEvents.dispatchEvent(
-      new CustomEvent("exit", { detail: { code } }),
-    );
+    EventHandler().notify("exit", { code });
   });
 
   goProcess.stdout.on("data", (data) => {

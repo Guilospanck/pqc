@@ -1,12 +1,19 @@
-import { State } from "./singleton";
+import { EventHandler } from "./singletons/event-handler";
+import { State } from "./singletons/state";
 
-type ServerToUIMessageType = "connected" | "keys_exchanged" | "message";
-type UIToServerMessageType = "connect" | "send";
-
-export type UIMessage = {
-  type: UIToServerMessageType | ServerToUIMessageType;
-  value: string;
-};
+export function isMessage(
+  value?: unknown,
+): value is { message: string; isSent: boolean } {
+  return (
+    value !== undefined &&
+    value !== null &&
+    typeof value === "object" &&
+    "message" in value &&
+    "isSent" in value &&
+    typeof (value as any).message === "string" &&
+    typeof (value as any).isSent === "boolean"
+  );
+}
 
 export function addMessage(text: string, isSent: boolean): void {
   const message = {
@@ -22,7 +29,5 @@ export function addMessage(text: string, isSent: boolean): void {
     State.messages.shift();
   }
 
-  globalThis.appEvents.dispatchEvent(
-    new CustomEvent("update_message_area", {}),
-  );
+  EventHandler().notify("update_message_area");
 }

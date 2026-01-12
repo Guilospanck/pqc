@@ -3,7 +3,7 @@ import {
   TextNodeRenderable,
   TextRenderable,
 } from "@opentui/core";
-import { ClearState, State } from "./singleton";
+import { ClearState, State } from "./singletons/state";
 
 let mainContainer: BoxRenderable | null = null;
 let messageArea: TextRenderable | null = null;

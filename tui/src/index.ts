@@ -5,32 +5,23 @@ import { createCliRenderer } from "@opentui/core";
 import { execSync } from "node:child_process";
 import { destroy, setupUI, updateInputBar, updateMessageArea } from "./ui";
 import { sendToGo, setupGo } from "./go";
-import { addMessage } from "./message";
-import { State } from "./singleton";
-import { setupKeyInputs } from "./keyListener";
+import { addMessage, isMessage } from "./message";
+import { State } from "./singletons/state";
+import { setupKeyInputs } from "./key-listener";
+import { EventHandler } from "./singletons/event-handler";
+
+const EVENT_HANDLER_ID = "index.ts";
 
 function setup(): void {
   setupKeyInputs();
   setupUI();
   setupGo();
 
-  // Add some initial messages
   addMessage("Welcome to Chat TUI!", false);
   addMessage("Type your message and press Enter to send", false);
   addMessage("Your messages will appear in blue", false);
 
   updateInputBar();
-}
-
-async function run(): Promise<void> {
-  const renderer = await createCliRenderer({
-    targetFps: 30,
-    enableMouseMovement: true,
-    exitOnCtrlC: true,
-  });
-  State.renderer = renderer;
-
-  setup();
 }
 
 function sendMessage(): void {
@@ -60,32 +51,66 @@ function exit(code?: number | null): void {
   process.exit(code ?? 0);
 }
 
+async function run(): Promise<void> {
+  const renderer = await createCliRenderer({
+    targetFps: 30,
+    enableMouseMovement: true,
+    exitOnCtrlC: true,
+  });
+  State.renderer = renderer;
+
+  setup();
+}
+
 function setupEventListeners(): void {
-  globalThis.appEvents ??= new EventTarget();
+  const eventHandler = EventHandler();
 
-  globalThis.appEvents.addEventListener("exit", (e: any) => {
-    exit(e.detail.code);
+  eventHandler.subscribe("send_message", {
+    id: EVENT_HANDLER_ID,
+    callback() {
+      sendMessage();
+    },
   });
 
-  globalThis.appEvents.addEventListener("update_message_area", () => {
-    updateMessageArea();
+  eventHandler.subscribe("exit", {
+    id: EVENT_HANDLER_ID,
+    callback(code) {
+      const codeNumber = Number(code);
+      if (isNaN(codeNumber)) {
+        exit();
+      } else {
+        exit(codeNumber);
+      }
+    },
   });
 
-  globalThis.appEvents.addEventListener("send_message", () => {
-    sendMessage();
+  eventHandler.subscribe("update_message_area", {
+    id: EVENT_HANDLER_ID,
+    callback() {
+      updateMessageArea();
+    },
   });
 
-  globalThis.appEvents.addEventListener("update_input_bar", () => {
-    updateInputBar();
+  eventHandler.subscribe("update_input_bar", {
+    id: EVENT_HANDLER_ID,
+    callback() {
+      updateInputBar();
+    },
   });
 
-  globalThis.appEvents.addEventListener("add_message", (e: any) => {
-    const { message, isSent } = e.detail as {
-      message: string;
-      isSent: boolean;
-    };
+  eventHandler.subscribe("add_message", {
+    id: EVENT_HANDLER_ID,
+    callback(value) {
+      if (!isMessage(value)) {
+        console.error(
+          "Expected value of type `{message: string; isSent: boolean}`. Received: ",
+          value,
+        );
+        return;
+      }
 
-    addMessage(message, isSent);
+      addMessage(value.message, value.isSent);
+    },
   });
 }
 
