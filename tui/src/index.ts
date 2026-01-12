@@ -91,7 +91,14 @@ function exit(code?: number | null): void {
   process.exit(code ?? 0);
 }
 
-function setup(): void {
+async function run(): Promise<void> {
+  const renderer = await createCliRenderer({
+    targetFps: 30,
+    enableMouseMovement: true,
+    exitOnCtrlC: true,
+  });
+  State.renderer = renderer;
+
   setupKeyInputs();
   setupUI();
   setupGo();
@@ -104,16 +111,6 @@ function setup(): void {
   updateInputBar();
 }
 
-async function run(): Promise<void> {
-  const renderer = await createCliRenderer({
-    targetFps: 30,
-    enableMouseMovement: true,
-    exitOnCtrlC: true,
-  });
-  State.renderer = renderer;
-}
-
 if (import.meta.main) {
-  setup();
   run();
 }

@@ -12,8 +12,8 @@ const addMessage = (message: string, isSent: boolean) => {
 };
 
 export function setupGo(): void {
-  // start go process
-  goProcess = spawn("../core/pqc", [], {
+  // start go client
+  goProcess = spawn("../core/client", [], {
     stdio: ["pipe", "pipe", "pipe"],
   });
 

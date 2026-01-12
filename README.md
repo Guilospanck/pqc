@@ -20,14 +20,24 @@ cd tui/ && bun i
 
 ### Running
 
-In one terminal:
+In one terminal, start the WS server:
+
+```sh
+# With `just`
+just start-server
+# Manually
+cd core/
+go run ./cmd/server
+```
+
+In another, start the client and the TUI:
 
 ```sh
 # With `just`
 just start-tui
 # Manually
 # First build the go code:
-cd core && go build .
+cd core && go build ./cmd/client
 # Now run the tui
 cd tui && bun run dev
 ```

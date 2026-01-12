@@ -1,7 +1,10 @@
-build-go:
-  cd core && go build .
+start-server: build-server
+  ./core/server
 
-start-tui: build-go
+start-client: build-client
+  ./core/client
+
+start-tui: build-client
   cd tui && bun run dev
 
 build-client:
