@@ -46,7 +46,7 @@ func UnmarshalWSMessage(data []byte) (WSMessage, error) {
 }
 
 // To be handled by the server
-func (connection *Connection) HandleClientMessage(msg WSMessage) {
+func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 	switch msg.Type {
 	case ExchangeKeys:
 		// Encapsulate ciphertext with the public key from client
@@ -55,6 +55,7 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) {
 
 		// save the HKDF'ed sharedSecret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
+		connection.Keys.Public = msg.Value
 
 		msg := WSMessage{
 			Type:  ExchangeKeys,
@@ -66,7 +67,7 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) {
 		// send ciphertext to client so we can exchange keys
 		if err := connection.WriteMessage(string(jsonMsg)); err != nil {
 			log.Printf("Could not send message to client: %s\n", err.Error())
-			return
+			return nil
 		}
 
 	case EncryptedMessage:
@@ -77,13 +78,41 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) {
 		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
 		if err != nil {
 			log.Printf("Could not decrypt message from client: %s\n", err.Error())
-			return
+			return nil
 		}
-
 		log.Printf("Decrypted message (from client): \"%s\"\n", decrypted)
+
+		return decrypted
+
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}
+
+	return nil
+}
+
+// This is used by the server to fan out a message from one client to others
+func (connection *Connection) RelayMessage(message string) {
+	log.Printf("Relaying message: \"%s\" to client \"%s\"\n", message, connection.Keys.Public[:7])
+
+	nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(message))
+	if err != nil {
+		log.Printf("Could not encrypt message: %s\n", err.Error())
+		return
+	}
+
+	msg := WSMessage{
+		Type:  EncryptedMessage,
+		Value: ciphertext,
+		Nonce: nonce,
+	}
+	jsonMsg := msg.Marshal()
+
+	// send encrypted message
+	if err := connection.WriteMessage(string(jsonMsg)); err != nil {
+		log.Printf("Could not send message to client: %s\n", err.Error())
+	}
+
 }
 
 // To be handled by the client
