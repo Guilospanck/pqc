@@ -55,8 +55,8 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 			// Remove client from connections
 			for i, v := range srv.connections {
 				if v == &connection {
-					// TODO: inform others that he logged out
 					srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
+					srv.fanOutClientMessage(connection, []byte("Disconnected."))
 					break
 				}
 			}
