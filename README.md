@@ -49,7 +49,7 @@ cd tui && bun run dev
 
 ### Commands
 
-- `/quit` or `/exit`: quits the TUI.
+- `/quit`, `/exit`, `/q`, `:wq`, `:q`, `:wqa`: quits the TUI.
 
 ## Cryptography
 
