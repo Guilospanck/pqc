@@ -44,7 +44,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("username", string(username))
 	w.Header().Add("color", string(color))
 
-	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Username: username, Color: color}
+	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
 
 	srv.connections = append(srv.connections, &connection)
 
@@ -87,9 +87,9 @@ func (srv *WSServer) fanOutClientMessage(client ws.Connection, decryptedMessage 
 			continue
 		}
 
-		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Username, string(decryptedMessage))
+		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Metadata.Username, string(decryptedMessage))
 
-		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", msgWithPublicKey, string(client.Username), c.Username)
-		c.RelayMessage(msgWithPublicKey, client.Username, client.Color)
+		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", msgWithPublicKey, string(client.Metadata.Username), c.Metadata.Username)
+		c.RelayMessage(msgWithPublicKey, client.Metadata.Username, client.Metadata.Color)
 	}
 }

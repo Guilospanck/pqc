@@ -32,7 +32,7 @@ func (client *WSClient) connectToWSServer() {
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
 
-	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Username: []byte(username), Color: []byte(color)}
+	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: []byte(username), Color: []byte(color)}}
 
 	// Generate keys
 	keys, err := cryptography.GenerateKeys()
@@ -112,7 +112,7 @@ func (client *WSClient) sendEncrypted(message string) {
 		Type:     ws.EncryptedMessage,
 		Value:    ciphertext,
 		Nonce:    nonce,
-		Metadata: ws.WSMetadata{Username: client.conn.Username, Color: client.conn.Color},
+		Metadata: ws.WSMetadata{Username: client.conn.Metadata.Username, Color: client.conn.Metadata.Color},
 	}
 	jsonMsg := msg.Marshal()
 
