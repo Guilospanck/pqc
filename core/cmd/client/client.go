@@ -1,4 +1,4 @@
-package client
+package main
 
 import (
 	"log"
@@ -6,10 +6,13 @@ import (
 	"pqc/pkg/cryptography"
 	"pqc/pkg/ui"
 	"pqc/pkg/ws"
+	"slices"
 	"strings"
 
 	"github.com/gorilla/websocket"
 )
+
+var QUIT_COMMANDS = []string{"/quit", "/q", "/exit", ":wq", ":q", ":wqa"}
 
 type WSClient struct {
 	conn ws.Connection
@@ -19,14 +22,17 @@ func (client *WSClient) connectToWSServer() {
 	url := "ws://localhost:8080/ws"
 
 	log.Print("Connecting to", url)
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	conn, res, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		log.Printf("Dial error: %s\n", err.Error())
 		return
 	}
-	ui.EmitToUI(ui.ToUIConnected, "")
+	ui.EmitToUI(ui.ToUIConnected, "", nil)
 
-	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn}
+	username := res.Header.Get("username")
+	color := res.Header.Get("color")
+
+	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Username: []byte(username), Color: []byte(color)}
 
 	// Generate keys
 	keys, err := cryptography.GenerateKeys()
@@ -37,9 +43,10 @@ func (client *WSClient) connectToWSServer() {
 	client.conn.Keys = keys
 
 	msg := ws.WSMessage{
-		Type:  ws.ExchangeKeys,
-		Value: keys.Public,
-		Nonce: nil,
+		Type:     ws.ExchangeKeys,
+		Value:    keys.Public,
+		Nonce:    nil,
+		Metadata: ws.WSMetadata{Username: []byte(username), Color: []byte(color)},
 	}
 	jsonMsg := msg.Marshal()
 
@@ -63,7 +70,7 @@ func (client *WSClient) connectToWSServer() {
 				log.Printf("Error unmarshalling message: %s\n", err.Error())
 				continue
 			}
-			msgJson.HandleServerMessage(&client.conn)
+			client.conn.HandleServerMessage(msgJson)
 		}
 	}()
 }
@@ -87,7 +94,7 @@ func (client *WSClient) sendEncrypted(message string) {
 	}
 
 	// Quit command
-	if text == "/quit" || text == "/exit" {
+	if slices.Contains(QUIT_COMMANDS, text) {
 		log.Print("Closing connection.")
 		client.closeConnection()
 		os.Exit(0)
@@ -102,9 +109,10 @@ func (client *WSClient) sendEncrypted(message string) {
 	}
 
 	msg := ws.WSMessage{
-		Type:  ws.EncryptedMessage,
-		Value: ciphertext,
-		Nonce: nonce,
+		Type:     ws.EncryptedMessage,
+		Value:    ciphertext,
+		Nonce:    nonce,
+		Metadata: ws.WSMetadata{Username: client.conn.Username, Color: client.conn.Color},
 	}
 	jsonMsg := msg.Marshal()
 

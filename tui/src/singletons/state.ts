@@ -1,12 +1,9 @@
 import type { CliRenderer } from "@opentui/core";
+import type { TUIMessage } from "../shared-types";
 
 type StateType = {
   renderer: CliRenderer | undefined;
-  messages: Array<{
-    text: string;
-    isSent: boolean;
-    timestamp: Date;
-  }>;
+  messages: Array<TUIMessage>;
   currentInput: string;
   inputCursorPosition: number;
 };

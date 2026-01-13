@@ -9,58 +9,9 @@ import { addMessage, isMessage } from "./message";
 import { State } from "./singletons/state";
 import { setupKeyInputs } from "./key-listener";
 import { EventHandler } from "./singletons/event-handler";
+import { COLORS } from "./constants";
 
 const EVENT_HANDLER_ID = "index.ts";
-
-function setup(): void {
-  setupKeyInputs();
-  setupUI();
-  setupGo();
-
-  addMessage("Welcome to Chat TUI!", false);
-  addMessage("Type your message and press Enter to send", false);
-  addMessage("Your messages will appear in blue", false);
-
-  updateInputBar();
-}
-
-function sendMessage(): void {
-  if (!State.currentInput.trim()) return;
-
-  addMessage(State.currentInput, true);
-  sendToGo("send", State.currentInput);
-
-  State.currentInput = "";
-  State.inputCursorPosition = 0;
-
-  updateInputBar();
-}
-
-function exit(code?: number | null): void {
-  if (!State.renderer) return;
-
-  destroy();
-  State.renderer.stop();
-
-  try {
-    execSync("clear", { stdio: "inherit" });
-  } catch (e) {
-    // Fallback if clear command fails
-    process.stdout.write("\x1b[2J\x1b[H");
-  }
-  process.exit(code ?? 0);
-}
-
-async function run(): Promise<void> {
-  const renderer = await createCliRenderer({
-    targetFps: 30,
-    enableMouseMovement: true,
-    exitOnCtrlC: true,
-  });
-  State.renderer = renderer;
-
-  setup();
-}
 
 function setupEventListeners(): void {
   const eventHandler = EventHandler();
@@ -103,18 +54,80 @@ function setupEventListeners(): void {
     callback(value) {
       if (!isMessage(value)) {
         console.error(
-          "Expected value of type `{message: string; isSent: boolean}`. Received: ",
+          'Expected value of type `Omit<TUIMessage, "timestamp"`. Received: ',
           value,
         );
         return;
       }
 
-      addMessage(value.message, value.isSent);
+      addMessage(value);
     },
   });
 }
 
-if (import.meta.main) {
+function sendMessage(): void {
+  if (!State.currentInput.trim()) return;
+
+  addMessage({
+    text: State.currentInput,
+    isSent: true,
+    color: COLORS.userMessage,
+  });
+  sendToGo("send", State.currentInput);
+
+  State.currentInput = "";
+  State.inputCursorPosition = 0;
+
+  updateInputBar();
+}
+
+function exit(code?: number | null): void {
+  if (!State.renderer) return;
+
+  destroy();
+  State.renderer.stop();
+
+  try {
+    execSync("clear", { stdio: "inherit" });
+  } catch (e) {
+    // Fallback if clear command fails
+    process.stdout.write("\x1b[2J\x1b[H");
+  }
+  process.exit(code ?? 0);
+}
+
+async function run(): Promise<void> {
+  const renderer = await createCliRenderer({
+    targetFps: 30,
+    enableMouseMovement: true,
+    exitOnCtrlC: true,
+  });
+  State.renderer = renderer;
+
+  setupKeyInputs();
+  setupUI();
+  setupGo();
   setupEventListeners();
+
+  addMessage({
+    text: "Welcome to Chat TUI!",
+    isSent: false,
+    color: COLORS.tuiMessage,
+  });
+  addMessage({
+    text: "Type your message and press Enter to send",
+    isSent: false,
+    color: COLORS.tuiMessage,
+  });
+  addMessage({
+    text: "Your messages will appear in blue",
+    isSent: false,
+    color: COLORS.tuiMessage,
+  });
+
+  updateInputBar();
+}
+
+if (import.meta.main) {
   run();
 }

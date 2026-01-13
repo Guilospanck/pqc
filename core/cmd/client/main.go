@@ -1,4 +1,4 @@
-package client
+package main
 
 import (
 	"bufio"
@@ -9,7 +9,7 @@ import (
 	"pqc/pkg/ws"
 )
 
-func Run() {
+func main() {
 	// Prevent the logging in Go to go to the TUI
 	log.SetOutput(os.Stderr)
 

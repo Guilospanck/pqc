@@ -10,7 +10,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Type of communications between WS client and WS server
 type WSMessageType string
+
+type WSMetadata struct {
+	Username []byte `json:"username"`
+	Color    []byte `json:"color"`
+}
 
 const (
 	ExchangeKeys     WSMessageType = "exchange_keys"
@@ -18,9 +24,10 @@ const (
 )
 
 type WSMessage struct {
-	Type  WSMessageType `json:"type"`
-	Value []byte        `json:"value"`
-	Nonce []byte        `json:"nonce"`
+	Type     WSMessageType `json:"type"`
+	Value    []byte        `json:"value"`
+	Nonce    []byte        `json:"nonce"`
+	Metadata WSMetadata    `json:"metadata"`
 }
 
 // This function panics if marshalling goes wrong
@@ -45,83 +52,11 @@ func UnmarshalWSMessage(data []byte) (WSMessage, error) {
 	return msg, nil
 }
 
-// To be handled by the server
-func (msg *WSMessage) HandleClientMessage(connection *Connection) {
-	switch msg.Type {
-	case ExchangeKeys:
-		// Encapsulate ciphertext with the public key from client
-		// and generates a sharedSecret
-		sharedSecret, cipherText := cryptography.KeyExchange(msg.Value)
-
-		// save the HKDF'ed sharedSecret
-		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-
-		msg := WSMessage{
-			Type:  ExchangeKeys,
-			Value: cipherText,
-			Nonce: nil,
-		}
-		jsonMsg := msg.Marshal()
-
-		// send ciphertext to client so we can exchange keys
-		if err := connection.WriteMessage(string(jsonMsg)); err != nil {
-			log.Printf("Could not send message to client: %s\n", err.Error())
-			return
-		}
-
-	case EncryptedMessage:
-		nonce := msg.Nonce
-		ciphertext := msg.Value
-
-		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
-		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
-		if err != nil {
-			log.Printf("Could not decrypt message from client: %s\n", err.Error())
-			return
-		}
-
-		log.Printf("Decrypted message (from client): \"%s\"\n", decrypted)
-	default:
-		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
-	}
-}
-
-// To be handled by the client
-func (msg *WSMessage) HandleServerMessage(connection *Connection) {
-	switch msg.Type {
-	case ExchangeKeys:
-		ciphertext := msg.Value
-		sharedSecret, err := connection.Keys.Private.Decapsulate(ciphertext)
-		if err != nil {
-			log.Printf("Could not get shared secret from ciphertext: %s\n", err.Error())
-			return
-		}
-
-		// Now the client also have the shared secret
-		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		ui.EmitToUI(ui.ToUIKeysExchanged, "")
-
-	case EncryptedMessage:
-		nonce := msg.Nonce
-		ciphertext := msg.Value
-
-		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
-		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
-		if err != nil {
-			log.Printf("Could not decrypt message from server: %s\n", err.Error())
-			return
-		}
-
-		log.Printf("Decrypted message (from server): \"%s\"\n", decrypted)
-		ui.EmitToUI(ui.ToUIMessage, string(decrypted))
-	default:
-		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
-	}
-}
-
 type Connection struct {
-	Keys cryptography.Keys
-	Conn *websocket.Conn
+	Keys     cryptography.Keys
+	Conn     *websocket.Conn
+	Username []byte
+	Color    []byte
 }
 
 func (ws *Connection) WriteMessage(text string) error {
@@ -137,12 +72,110 @@ func (ws *Connection) WriteMessage(text string) error {
 func (ws *Connection) ReadMessage() ([]byte, error) {
 	_, msg, err := ws.Conn.ReadMessage()
 	if err != nil {
-		// Don't log normal connection closures
-		if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-			log.Println("Read error:", err)
-		}
 		return []byte(""), err
 	}
 
 	return msg, nil
+}
+
+// To be handled by the server
+func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
+	switch msg.Type {
+	case ExchangeKeys:
+		// Encapsulate ciphertext with the public key from client
+		// and generates a sharedSecret
+		sharedSecret, cipherText := cryptography.KeyExchange(msg.Value)
+
+		// save the HKDF'ed sharedSecret
+		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
+		connection.Keys.Public = msg.Value
+
+		msg := WSMessage{
+			Type:     ExchangeKeys,
+			Value:    cipherText,
+			Nonce:    nil,
+			Metadata: WSMetadata{Username: connection.Username, Color: connection.Color},
+		}
+		jsonMsg := msg.Marshal()
+
+		// send ciphertext to client so we can exchange keys
+		if err := connection.WriteMessage(string(jsonMsg)); err != nil {
+			log.Printf("Could not send message to client: %s\n", err.Error())
+			return nil
+		}
+
+	case EncryptedMessage:
+		nonce := msg.Nonce
+		ciphertext := msg.Value
+
+		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
+		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
+		if err != nil {
+			log.Printf("Could not decrypt message from client (%s): %s\n", connection.Username, err.Error())
+			return nil
+		}
+		log.Printf("Decrypted message (%s): \"%s\"\n", connection.Username, decrypted)
+
+		return decrypted
+
+	default:
+		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
+	}
+
+	return nil
+}
+
+// This is used by the server to fan out a message from one client to others
+func (connection *Connection) RelayMessage(message string, fromUsername, fromColor []byte) {
+	nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(message))
+	if err != nil {
+		log.Printf("Could not encrypt message: %s\n", err.Error())
+		return
+	}
+
+	msg := WSMessage{
+		Type:     EncryptedMessage,
+		Value:    ciphertext,
+		Nonce:    nonce,
+		Metadata: WSMetadata{Username: fromUsername, Color: fromColor},
+	}
+	jsonMsg := msg.Marshal()
+
+	// send encrypted message
+	if err := connection.WriteMessage(string(jsonMsg)); err != nil {
+		log.Printf("Could not send message to client: %s\n", err.Error())
+	}
+
+}
+
+// To be handled by the client
+func (connection *Connection) HandleServerMessage(msg WSMessage) {
+	switch msg.Type {
+	case ExchangeKeys:
+		ciphertext := msg.Value
+		sharedSecret, err := connection.Keys.Private.Decapsulate(ciphertext)
+		if err != nil {
+			log.Printf("Could not get shared secret from ciphertext: %s\n", err.Error())
+			return
+		}
+
+		// Now the client also have the shared secret
+		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
+		ui.EmitToUI(ui.ToUIKeysExchanged, "", nil)
+
+	case EncryptedMessage:
+		nonce := msg.Nonce
+		ciphertext := msg.Value
+
+		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
+		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
+		if err != nil {
+			log.Printf("Could not decrypt message from server: %s\n", err.Error())
+			return
+		}
+
+		ui.EmitToUI(ui.ToUIMessage, string(decrypted), msg.Metadata.Color)
+	default:
+		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
+	}
 }

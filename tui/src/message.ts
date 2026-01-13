@@ -1,28 +1,28 @@
+import type { TUIMessage } from "./shared-types";
 import { EventHandler } from "./singletons/event-handler";
 import { State } from "./singletons/state";
 
 export function isMessage(
   value?: unknown,
-): value is { message: string; isSent: boolean } {
+): value is Omit<TUIMessage, "timestamp"> {
   return (
     value !== undefined &&
     value !== null &&
     typeof value === "object" &&
-    "message" in value &&
+    "text" in value &&
     "isSent" in value &&
-    typeof (value as any).message === "string" &&
-    typeof (value as any).isSent === "boolean"
+    "color" in value &&
+    typeof (value as any).text === "string" &&
+    typeof (value as any).isSent === "boolean" &&
+    typeof (value as any).color === "string"
   );
 }
 
-export function addMessage(text: string, isSent: boolean): void {
-  const message = {
-    text: text,
-    isSent: isSent,
+export function addMessage(msg: Omit<TUIMessage, "timestamp">): void {
+  State.messages.push({
+    ...msg,
     timestamp: new Date(),
-  };
-
-  State.messages.push(message);
+  });
 
   // Keep only last 50 messages
   if (State.messages.length > 50) {

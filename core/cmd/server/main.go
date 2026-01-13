@@ -1,12 +1,14 @@
-package server
+package main
 
 import (
 	"log"
 	"os"
 )
 
-func Run() {
+func main() {
 	// Prevent the logging in Go to go to the TUI
 	log.SetOutput(os.Stderr)
-	startServer()
+
+	server := WSServer{connections: nil}
+	server.startServer()
 }
