@@ -30,7 +30,7 @@ cd core/
 go run ./cmd/server
 ```
 
-In another, start the client and the TUI:
+In another terminal(s), start the client(s) with the TUI:
 
 ```sh
 # With `just`
@@ -41,6 +41,9 @@ cd core && go build ./cmd/client
 # Now run the tui
 cd tui && bun run dev
 ```
+
+> [!TIP]
+> You can use multiple clients and just one server. The server will handle the data encryption from one client to another and will fanout the information to all connected clients, as if every client is connected to the same big room.
 
 ## TUI
 
