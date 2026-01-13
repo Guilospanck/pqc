@@ -9,6 +9,6 @@ func main() {
 	// Prevent the logging in Go to go to the TUI
 	log.SetOutput(os.Stderr)
 
-	server := Server{connections: nil}
+	server := WSServer{connections: nil}
 	server.startServer()
 }

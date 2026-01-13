@@ -10,7 +10,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Type of communications between WS client and WS server
 type WSMessageType string
+
+type WSMetadata struct {
+	Username []byte `json:"username"`
+	Color    []byte `json:"color"`
+}
 
 const (
 	ExchangeKeys     WSMessageType = "exchange_keys"
@@ -18,9 +24,10 @@ const (
 )
 
 type WSMessage struct {
-	Type  WSMessageType `json:"type"`
-	Value []byte        `json:"value"`
-	Nonce []byte        `json:"nonce"`
+	Type     WSMessageType `json:"type"`
+	Value    []byte        `json:"value"`
+	Nonce    []byte        `json:"nonce"`
+	Metadata WSMetadata    `json:"metadata"`
 }
 
 // This function panics if marshalling goes wrong
@@ -45,6 +52,32 @@ func UnmarshalWSMessage(data []byte) (WSMessage, error) {
 	return msg, nil
 }
 
+type Connection struct {
+	Keys     cryptography.Keys
+	Conn     *websocket.Conn
+	Username []byte
+	Color    []byte
+}
+
+func (ws *Connection) WriteMessage(text string) error {
+	err := ws.Conn.WriteMessage(websocket.TextMessage, []byte(text))
+	if err != nil {
+		log.Println("Write error:", err)
+		return err
+	}
+
+	return nil
+}
+
+func (ws *Connection) ReadMessage() ([]byte, error) {
+	_, msg, err := ws.Conn.ReadMessage()
+	if err != nil {
+		return []byte(""), err
+	}
+
+	return msg, nil
+}
+
 // To be handled by the server
 func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 	switch msg.Type {
@@ -58,9 +91,10 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 		connection.Keys.Public = msg.Value
 
 		msg := WSMessage{
-			Type:  ExchangeKeys,
-			Value: cipherText,
-			Nonce: nil,
+			Type:     ExchangeKeys,
+			Value:    cipherText,
+			Nonce:    nil,
+			Metadata: WSMetadata{Username: connection.Username, Color: connection.Color},
 		}
 		jsonMsg := msg.Marshal()
 
@@ -92,9 +126,7 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 }
 
 // This is used by the server to fan out a message from one client to others
-func (connection *Connection) RelayMessage(message string, from string) {
-	log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", message, from, connection.Username)
-
+func (connection *Connection) RelayMessage(message string, fromUsername, fromColor []byte) {
 	nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(message))
 	if err != nil {
 		log.Printf("Could not encrypt message: %s\n", err.Error())
@@ -102,9 +134,10 @@ func (connection *Connection) RelayMessage(message string, from string) {
 	}
 
 	msg := WSMessage{
-		Type:  EncryptedMessage,
-		Value: ciphertext,
-		Nonce: nonce,
+		Type:     EncryptedMessage,
+		Value:    ciphertext,
+		Nonce:    nonce,
+		Metadata: WSMetadata{Username: fromUsername, Color: fromColor},
 	}
 	jsonMsg := msg.Marshal()
 
@@ -116,7 +149,7 @@ func (connection *Connection) RelayMessage(message string, from string) {
 }
 
 // To be handled by the client
-func (connection *Connection) HandleServerMessage(msg WSMessage, color string) {
+func (connection *Connection) HandleServerMessage(msg WSMessage) {
 	switch msg.Type {
 	case ExchangeKeys:
 		ciphertext := msg.Value
@@ -128,7 +161,7 @@ func (connection *Connection) HandleServerMessage(msg WSMessage, color string) {
 
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		ui.EmitToUI(ui.ToUIKeysExchanged, "", "")
+		ui.EmitToUI(ui.ToUIKeysExchanged, "", nil)
 
 	case EncryptedMessage:
 		nonce := msg.Nonce
@@ -141,33 +174,8 @@ func (connection *Connection) HandleServerMessage(msg WSMessage, color string) {
 			return
 		}
 
-		ui.EmitToUI(ui.ToUIMessage, string(decrypted), color)
+		ui.EmitToUI(ui.ToUIMessage, string(decrypted), msg.Metadata.Color)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}
-}
-
-type Connection struct {
-	Keys     cryptography.Keys
-	Conn     *websocket.Conn
-	Username []byte
-}
-
-func (ws *Connection) WriteMessage(text string) error {
-	err := ws.Conn.WriteMessage(websocket.TextMessage, []byte(text))
-	if err != nil {
-		log.Println("Write error:", err)
-		return err
-	}
-
-	return nil
-}
-
-func (ws *Connection) ReadMessage() ([]byte, error) {
-	_, msg, err := ws.Conn.ReadMessage()
-	if err != nil {
-		return []byte(""), err
-	}
-
-	return msg, nil
 }

@@ -10,11 +10,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Server struct {
+type WSServer struct {
 	connections []*ws.Connection
 }
 
-func (srv *Server) startServer() {
+func (srv *WSServer) startServer() {
 	http.HandleFunc("/ws", srv.wsHandler)
 
 	log.Print("WS server started at localhost:8080/ws")
@@ -28,7 +28,7 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func (srv *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("Error upgrading WS: ", err)
@@ -37,9 +37,14 @@ func (srv *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	username := GetRandomName()
-	log.Printf("New connection: %s\n", username)
+	color := GetRandomColor()
+	log.Printf("New connection: %s - %s\n", username, color)
 
-	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Username: username}
+	// Send the generated username and color to the WSClient
+	w.Header().Add("username", string(username))
+	w.Header().Add("color", string(color))
+
+	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Username: username, Color: color}
 
 	srv.connections = append(srv.connections, &connection)
 
@@ -71,14 +76,20 @@ func (srv *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		for _, c := range srv.connections {
-			if string(c.Keys.Public) == string(connection.Keys.Public) {
-				continue
-			}
+		srv.fanOutClientMessage(connection, decryptedMessageSent)
 
-			msgWithPublicKey := fmt.Sprintf("%s: %s", connection.Username, string(decryptedMessageSent))
+	}
+}
 
-			c.RelayMessage(msgWithPublicKey, string(connection.Username))
+func (srv *WSServer) fanOutClientMessage(client ws.Connection, decryptedMessage []byte) {
+	for _, c := range srv.connections {
+		if string(c.Keys.Public) == string(client.Keys.Public) {
+			continue
 		}
+
+		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Username, string(decryptedMessage))
+
+		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", msgWithPublicKey, string(client.Username), c.Username)
+		c.RelayMessage(msgWithPublicKey, client.Username, client.Color)
 	}
 }
