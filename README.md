@@ -47,6 +47,69 @@ cd tui && bun run dev
 > [!TIP]
 > You can use multiple clients and just one server. The server will handle the data encryption from one client to another and will fanout the information to all connected clients, as if every client is connected to the same big room.
 
+## Architecture
+
+```mermaid
+graph TB
+    subgraph "Go WebSocket Server"
+        WS_SERVER[WebSocket Server<br/>gorilla/websocket<br/>:8080]
+        HUB[Hub - Connection Manager<br/>Manages multiple clients]
+        WS_SERVER --> HUB
+    end
+
+    subgraph "Go WebSocket Client"
+        WS_CLIENT[WebSocket Client<br/>gorilla/websocket]
+        STDIN_READER[Stdin Reader<br/>JSON commands]
+        STDOUT_WRITER[Stdout Writer<br/>JSON responses]
+        
+        WS_CLIENT --> |HTTP/WebSocket| WS_SERVER
+        STDIN_READER --> WS_CLIENT
+        WS_CLIENT --> STDOUT_WRITER
+    end
+
+    subgraph "TypeScript TUI"
+        TUI[TUI Application<br/>@opentui/core<br/>TypeScript/Bun]
+        GO_PROCESS[Go Process Spawner<br/>child_process.spawn]
+        STDIN_COMM[Stdin Communication<br/>JSON commands]
+        STDOUT_COMM[Stdout Communication<br/>JSON responses]
+        
+        TUI --> GO_PROCESS
+        GO_PROCESS --> |spawns| WS_CLIENT
+        TUI --> |sends commands to| STDIN_COMM
+        STDOUT_COMM --> |receives data from| TUI
+    end
+
+    %% Data flow
+    TUI -.-> |user input| STDIN_COMM
+    STDIN_COMM -.-> |JSON commands| STDIN_READER
+    STDOUT_WRITER -.-> |JSON responses| STDOUT_COMM
+    STDOUT_COMM -.-> |updates| TUI
+
+    %% WebSocket connection
+    WS_CLIENT <--> |WebSocket<br/>ws://localhost:8080/ws| WS_SERVER
+
+    %% Styling
+    classDef go fill:#00ADD8,color:#white
+    classDef ts fill:#3178c6,color:#white
+    classDef ws fill:#6f42c1,color:#white
+    
+    class WS_SERVER,HUB,WS_CLIENT,STDIN_READER,STDOUT_WRITER go
+    class TUI,GO_PROCESS,STDIN_COMM,STDOUT_COMM ts
+    class WS_SERVER,WS_CLIENT ws
+```
+
+**Architecture Overview:**
+
+- **WebSocket Server (Go)**: Hub managing multiple client connections using gorilla/websocket
+- **WebSocket Client (Go)**: Connects to server via HTTP/WebSocket, reads JSON commands from stdin, writes responses to stdout  
+- **TUI (TypeScript)**: Uses @opentui/core, spawns Go process, communicates via stdin/stdout with JSON messages
+
+**Key Technologies:**
+- Go + gorilla/websocket for server/client
+- TypeScript + @opentui core for TUI
+- JSON communication between TUI and Go client
+- WebSocket protocol for real-time messaging
+
 ## TUI
 
 ### Commands
