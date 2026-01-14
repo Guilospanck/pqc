@@ -10,9 +10,6 @@ import (
 )
 
 func main() {
-	// Prevent the logging in Go to go to the TUI
-	log.SetOutput(os.Stderr)
-
 	scanner := bufio.NewScanner(os.Stdin)
 
 	wsClient := WSClient{conn: ws.Connection{}}

@@ -6,11 +6,11 @@ import {
 import { ClearState, State } from "./singletons/state";
 import { COLORS } from "./constants";
 
-let mainContainer: BoxRenderable | null = null;
 let messageArea: TextRenderable | null = null;
 let usersPanel: TextRenderable | null = null;
 let inputBar: TextRenderable | null = null;
 let statusText: TextRenderable | null = null;
+let currentUserText: TextRenderable | null = null;
 
 export function updateMessageArea(): void {
   if (!messageArea) return;
@@ -70,7 +70,7 @@ export function setupUI(): void {
     flexDirection: "row",
   });
 
-  // Create main content area (70% width)
+  // Create main content area
   const mainContentBox = new BoxRenderable(State.renderer, {
     id: "mainContentBox",
     width: "80%",
@@ -114,16 +114,38 @@ export function setupUI(): void {
 
   rootBox.add(mainContentBox);
 
-  // Create users panel on the right (30% width)
+  const usersBox = new BoxRenderable(State.renderer, {
+    id: "usersBox",
+    width: "20%",
+    height: "100%",
+    backgroundColor: "#161b22",
+    zIndex: 3,
+    border: false,
+  });
+
+  // Create users panel on the right
   usersPanel = new TextRenderable(State.renderer, {
     id: "usersPanel",
-    width: "20%",
-    height: "85%",
+    width: "100%",
+    height: "95%",
     zIndex: 3,
     fg: "#f0f6fc",
     bg: "#0d1117",
   });
-  rootBox.add(usersPanel);
+  usersBox.add(usersPanel);
+
+  // show user status at bottom-right
+  currentUserText = new TextRenderable(State.renderer, {
+    id: "usersPanel",
+    width: "100%",
+    height: "5%",
+    zIndex: 3,
+    fg: "#f0f6fc",
+    bg: "#0d1117",
+  });
+  usersBox.add(currentUserText);
+
+  rootBox.add(usersBox);
 
   State.renderer.root.add(rootBox);
 }
@@ -190,9 +212,25 @@ export function updateInputBar(): void {
   }
 }
 
+export function updateCurrentUser(): void {
+  if (!currentUserText) return;
+
+  currentUserText.clear();
+
+  const userNode = TextNodeRenderable.fromNodes([
+    TextNodeRenderable.fromString("● ", {
+      fg: State.userColor,
+    }),
+    TextNodeRenderable.fromString(State.username, {
+      fg: State.userColor,
+    }),
+  ]);
+
+  const containerNode = TextNodeRenderable.fromNodes([userNode]);
+  currentUserText.add(containerNode);
+}
+
 export function destroy(): void {
-  mainContainer?.destroyRecursively();
-  mainContainer = null;
   messageArea = null;
   usersPanel = null;
   inputBar = null;

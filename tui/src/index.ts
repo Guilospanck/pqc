@@ -3,7 +3,14 @@
 import { createCliRenderer } from "@opentui/core";
 
 import { execSync } from "node:child_process";
-import { destroy, setupUI, updateInputBar, updateMessageArea, updateUsersPanel } from "./ui";
+import {
+  destroy,
+  setupUI,
+  updateCurrentUser,
+  updateInputBar,
+  updateMessageArea,
+  updateUsersPanel,
+} from "./ui";
 import { sendToGo, setupGo } from "./go";
 import { addMessage, isMessage } from "./message";
 import { State } from "./singletons/state";
@@ -46,6 +53,13 @@ function setupEventListeners(): void {
     id: EVENT_HANDLER_ID,
     callback() {
       updateInputBar();
+    },
+  });
+
+  eventHandler.subscribe("update_current_user_text", {
+    id: EVENT_HANDLER_ID,
+    callback() {
+      updateCurrentUser();
     },
   });
 

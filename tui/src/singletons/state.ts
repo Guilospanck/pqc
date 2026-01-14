@@ -30,7 +30,7 @@ export function ClearState(): void {
   State.userColor = "";
 }
 
-export function AddMultipleConnectedUsers(users: Array<ConnectedUser>): void {
+export function addMultipleConnectedUsers(users: Array<ConnectedUser>): void {
   State.connectedUsers.push(...users);
 }
 
