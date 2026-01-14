@@ -1,8 +1,16 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type Stream from "node:stream";
-import { type TUIGoCommunication, type TUIMessage } from "./shared-types";
+import {
+  type ConnectedUser,
+  type TUIGoCommunication,
+  type TUIMessage,
+} from "./shared-types";
 import { EventHandler } from "./singletons/event-handler";
-import { addConnectedUser, removeConnectedUser } from "./singletons/state";
+import {
+  addConnectedUser,
+  AddMultipleConnectedUsers,
+  removeConnectedUser,
+} from "./singletons/state";
 
 let goProcess:
   | ChildProcessByStdio<Stream.Writable, Stream.Readable, Stream.Readable>
@@ -23,51 +31,70 @@ export function setupGo(): void {
   });
 
   goProcess.stdout.on("data", (data) => {
-    let message: TUIGoCommunication;
-    try {
-      message = JSON.parse(data);
-    } catch {
-      console.error("Error parsing data from Go stdout: ", String(data));
-      return;
-    }
+    const commands = String(data).trim().split("\n");
 
-    let tuiMessage: Omit<TUIMessage, "timestamp"> = {
-      text: "",
-      isSent: false,
-      color: message.color,
-    };
+    for (const command of commands) {
+      let message: TUIGoCommunication;
+      try {
+        message = JSON.parse(command);
+      } catch {
+        console.error("Error parsing data from Go stdout: ", command);
+        return;
+      }
 
-    switch (message.type) {
-      case "connected": {
-        addMessage({
-          ...tuiMessage,
-          text: "Connected to server.",
-        });
-        break;
-      }
-      case "keys_exchanged": {
-        addMessage({
-          ...tuiMessage,
-          text: "Keys exchanged.",
-        });
-        break;
-      }
-      case "message": {
-        addMessage({
-          ...tuiMessage,
-          text: message.value,
-        });
-        break;
-      }
-      case "user_entered_chat": {
-        addConnectedUser(message.value, message.color);
-        EventHandler().notify("update_users_panel", {});
-        break;
-      }
-      case "user_left_chat": {
-        removeConnectedUser(message.value);
-        EventHandler().notify("update_users_panel", {});
-        break;
+      let tuiMessage: Omit<TUIMessage, "timestamp"> = {
+        text: "",
+        isSent: false,
+        color: message.color,
+      };
+
+      switch (message.type) {
+        case "connected": {
+          addMessage({
+            ...tuiMessage,
+            text: "Connected to server.",
+          });
+          break;
+        }
+        case "keys_exchanged": {
+          addMessage({
+            ...tuiMessage,
+            text: "Keys exchanged.",
+          });
+          break;
+        }
+        case "message": {
+          addMessage({
+            ...tuiMessage,
+            text: message.value,
+          });
+          break;
+        }
+        case "user_entered_chat": {
+          addConnectedUser(message.value, message.color);
+          EventHandler().notify("update_users_panel", {});
+          break;
+        }
+        case "user_left_chat": {
+          removeConnectedUser(message.value);
+          EventHandler().notify("update_users_panel", {});
+          break;
+        }
+        case "current_users": {
+          let users: Array<ConnectedUser> = [];
+          try {
+            users = JSON.parse(message.value);
+          } catch (err) {
+            console.error(
+              "Could not parse users from `current_users` event. Error: ",
+              err,
+            );
+          }
+
+          AddMultipleConnectedUsers(users);
+          EventHandler().notify("update_users_panel", {});
+          break;
+        }
       }
     }
   });

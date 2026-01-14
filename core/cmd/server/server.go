@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -46,6 +47,9 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
 
+	// Update this newly connected user with info regarding all connected users
+	srv.informNewUserOfAllCurrentUsers(&connection)
+
 	// Send to other clients the event of a newly connected client
 	srv.fanOutUserEnteredChat(username, color)
 
@@ -71,7 +75,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		srv.fanOutClientMessage(connection, decryptedMessageSent)
+		srv.fanOutUserMessage(connection, decryptedMessageSent)
 
 	}
 }
@@ -103,7 +107,32 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 	}
 }
 
-func (srv *WSServer) fanOutUserEnteredChat(username, color []byte) {
+func (srv *WSServer) informNewUserOfAllCurrentUsers(newUser *ws.Connection) {
+	users := []ws.WSMetadata{}
+	for _, c := range srv.connections {
+		users = append(users, ws.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color})
+	}
+
+	marshalledUsers, err := json.Marshal(users)
+	if err != nil {
+		log.Println("Could not marshal users to inform newly connected user")
+		return
+	}
+
+	msg := ws.WSMessage{
+		Type:     ws.CurrentUsers,
+		Value:    marshalledUsers,
+		Nonce:    nil,
+		Metadata: ws.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color},
+	}
+	jsonMsg := msg.Marshal()
+
+	if err = newUser.WriteMessage(string(jsonMsg)); err != nil {
+		log.Println("Problem sending message to the client regarding the currently connected users")
+	}
+}
+
+func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
 	msg := ws.WSMessage{
 		Type:     ws.UserEntered,
 		Value:    nil,
@@ -116,10 +145,9 @@ func (srv *WSServer) fanOutUserEnteredChat(username, color []byte) {
 			log.Printf("Error trying to inform the client %s that a new connection was made: %s\n", c.Metadata.Username, err.Error())
 		}
 	}
-
 }
 
-func (srv *WSServer) fanOutClientMessage(client ws.Connection, decryptedMessage []byte) {
+func (srv *WSServer) fanOutUserMessage(client ws.Connection, decryptedMessage []byte) {
 	for _, c := range srv.connections {
 		if string(c.Keys.Public) == string(client.Keys.Public) {
 			continue
@@ -127,7 +155,7 @@ func (srv *WSServer) fanOutClientMessage(client ws.Connection, decryptedMessage 
 
 		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Metadata.Username, string(decryptedMessage))
 
-		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", msgWithPublicKey, string(client.Metadata.Username), c.Metadata.Username)
+		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", msgWithPublicKey, client.Metadata.Username, c.Metadata.Username)
 		c.RelayMessage(msgWithPublicKey, client.Metadata.Username, client.Metadata.Color)
 	}
 }

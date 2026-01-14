@@ -7,6 +7,8 @@ type StateType = {
   currentInput: string;
   inputCursorPosition: number;
   connectedUsers: Array<ConnectedUser>;
+  username: string;
+  userColor: string;
 };
 
 export const State: StateType = {
@@ -15,6 +17,8 @@ export const State: StateType = {
   currentInput: "",
   inputCursorPosition: 0,
   connectedUsers: [],
+  username: "",
+  userColor: "",
 };
 
 export function ClearState(): void {
@@ -22,19 +26,33 @@ export function ClearState(): void {
   State.currentInput = "";
   State.inputCursorPosition = 0;
   State.connectedUsers = [];
+  State.username = "";
+  State.userColor = "";
+}
+
+export function AddMultipleConnectedUsers(users: Array<ConnectedUser>): void {
+  State.connectedUsers.push(...users);
 }
 
 export function addConnectedUser(username: string, color: string): void {
-  const existingUser = State.connectedUsers.find(user => user.username === username);
-  if (!existingUser) {
-    State.connectedUsers.push({
-      username,
-      color,
-      joinedAt: new Date()
-    });
-  }
+  if (username === State.username) return;
+
+  const existingUser = State.connectedUsers.find(
+    (user) => user.username === username,
+  );
+
+  if (existingUser) return;
+
+  State.connectedUsers.push({
+    username,
+    color,
+  });
 }
 
 export function removeConnectedUser(username: string): void {
-  State.connectedUsers = State.connectedUsers.filter(user => user.username !== username);
+  if (username === State.username) return;
+
+  State.connectedUsers = State.connectedUsers.filter(
+    (user) => user.username !== username,
+  );
 }

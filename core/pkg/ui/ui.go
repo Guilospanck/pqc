@@ -13,6 +13,7 @@ const (
 	ToUIMessage         UIMessageType = "message"
 	ToUIUserEnteredChat UIMessageType = "user_entered_chat"
 	ToUIUserLeftChat    UIMessageType = "user_left_chat"
+	ToUICurrentUsers    UIMessageType = "current_users"
 
 	FromUIConnect = "connect"
 	FromUISend    = "send"
@@ -25,10 +26,10 @@ type UIMessage struct {
 }
 
 // We talk to the UI via stdout
-func EmitToUI(msgType UIMessageType, value string, color []byte) {
-	var messageColor []byte = color
-	if color == nil {
-		messageColor = []byte("#7ee787")
+func EmitToUI(msgType UIMessageType, value, color string) {
+	var messageColor string = color
+	if len(color) == 0 {
+		messageColor = "#7ee787"
 	}
 
 	msg := UIMessage{

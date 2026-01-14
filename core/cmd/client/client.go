@@ -27,12 +27,14 @@ func (client *WSClient) connectToWSServer() {
 		log.Printf("Dial error: %s\n", err.Error())
 		return
 	}
-	ui.EmitToUI(ui.ToUIConnected, "", nil)
 
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
 
-	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: []byte(username), Color: []byte(color)}}
+	// Tell UI we're connected with some username and color
+	ui.EmitToUI(ui.ToUIConnected, username, color)
+
+	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
 
 	// Generate keys
 	keys, err := cryptography.GenerateKeys()
@@ -46,7 +48,7 @@ func (client *WSClient) connectToWSServer() {
 		Type:     ws.ExchangeKeys,
 		Value:    keys.Public,
 		Nonce:    nil,
-		Metadata: ws.WSMetadata{Username: []byte(username), Color: []byte(color)},
+		Metadata: ws.WSMetadata{Username: username, Color: color},
 	}
 	jsonMsg := msg.Marshal()
 

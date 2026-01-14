@@ -3,7 +3,8 @@ type GoToTUIMessageType =
   | "keys_exchanged"
   | "message"
   | "user_entered_chat"
-  | "user_left_chat";
+  | "user_left_chat"
+  | "current_users";
 type TUIToGoMessageType = "connect" | "send";
 
 export type TUIGoCommunication = {
@@ -15,7 +16,6 @@ export type TUIGoCommunication = {
 export type ConnectedUser = {
   username: string;
   color: string;
-  joinedAt: Date;
 };
 
 export type TUIMessage = {
