@@ -4,7 +4,8 @@ type Topic =
   | "send_message"
   | "update_input_bar"
   | "add_message"
-  | "update_users_panel";
+  | "update_users_panel"
+  | "update_current_user_text";
 
 type SubscriberId = string;
 

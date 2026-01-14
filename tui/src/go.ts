@@ -8,8 +8,9 @@ import {
 import { EventHandler } from "./singletons/event-handler";
 import {
   addConnectedUser,
-  AddMultipleConnectedUsers,
+  addMultipleConnectedUsers,
   removeConnectedUser,
+  State,
 } from "./singletons/state";
 
 let goProcess:
@@ -50,10 +51,16 @@ export function setupGo(): void {
 
       switch (message.type) {
         case "connected": {
+          State.username = message.value;
+          State.userColor = message.color;
+
           addMessage({
             ...tuiMessage,
             text: "Connected to server.",
           });
+
+          EventHandler().notify("update_current_user_text", {});
+
           break;
         }
         case "keys_exchanged": {
@@ -91,7 +98,7 @@ export function setupGo(): void {
             );
           }
 
-          AddMultipleConnectedUsers(users);
+          addMultipleConnectedUsers(users);
           EventHandler().notify("update_users_panel", {});
           break;
         }

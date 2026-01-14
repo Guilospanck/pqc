@@ -163,7 +163,7 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		ui.EmitToUI(ui.ToUIKeysExchanged, "", "")
+		ui.EmitToUI(ui.ToUIKeysExchanged, connection.Metadata.Username, connection.Metadata.Color)
 
 	case EncryptedMessage:
 		nonce := msg.Nonce

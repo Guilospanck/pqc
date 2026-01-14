@@ -30,20 +30,24 @@ var upgrader = websocket.Upgrader{
 }
 
 func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	username := GetRandomName()
+	color := GetRandomColor()
+
+	// Send the generated username and color to the WSClient
+	// INFO: it needs to be *before* the upgrade
+	responseHeader := http.Header{}
+	responseHeader.Set("username", username)
+	responseHeader.Set("color", color)
+
+	conn, err := upgrader.Upgrade(w, r, responseHeader)
+
 	if err != nil {
 		log.Print("Error upgrading WS: ", err)
 		return
 	}
 	defer conn.Close()
 
-	username := GetRandomName()
-	color := GetRandomColor()
 	log.Printf("New connection: %s - %s\n", username, color)
-
-	// Send the generated username and color to the WSClient
-	w.Header().Add("username", string(username))
-	w.Header().Add("color", string(color))
 
 	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
 
