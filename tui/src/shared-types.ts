@@ -1,4 +1,8 @@
-type GoToTUIMessageType = "connected" | "keys_exchanged" | "message";
+type GoToTUIMessageType =
+  | "connected"
+  | "keys_exchanged"
+  | "message"
+  | "user_entered_chat";
 type TUIToGoMessageType = "connect" | "send";
 
 export type TUIGoCommunication = {

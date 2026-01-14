@@ -8,9 +8,10 @@ import (
 type UIMessageType string
 
 const (
-	ToUIConnected     UIMessageType = "connected"
-	ToUIKeysExchanged UIMessageType = "keys_exchanged"
-	ToUIMessage       UIMessageType = "message"
+	ToUIConnected       UIMessageType = "connected"
+	ToUIKeysExchanged   UIMessageType = "keys_exchanged"
+	ToUIMessage         UIMessageType = "message"
+	ToUIUserEnteredChat UIMessageType = "user_entered_chat"
 
 	FromUIConnect = "connect"
 	FromUISend    = "send"

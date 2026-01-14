@@ -58,6 +58,13 @@ export function setupGo(): void {
         });
         break;
       }
+      case "user_entered_chat": {
+        addMessage({
+          ...tuiMessage,
+          text: message.value,
+        });
+        break;
+      }
     }
   });
 

@@ -46,6 +46,20 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
 
+	// Send to other clients the event of a newly connected client
+	msg := ws.WSMessage{
+		Type:     ws.NewConnection,
+		Value:    nil,
+		Nonce:    nil,
+		Metadata: ws.WSMetadata{Username: []byte(username), Color: []byte(color)},
+	}
+	jsonMsg := msg.Marshal()
+	for _, c := range srv.connections {
+		if err := c.WriteMessage(string(jsonMsg)); err != nil {
+			log.Printf("Error trying to inform the client that a new connection was made: %s\n", err.Error())
+		}
+	}
+
 	srv.connections = append(srv.connections, &connection)
 
 	for {
