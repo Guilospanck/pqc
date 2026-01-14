@@ -14,13 +14,16 @@ import (
 type WSMessageType string
 
 type WSMetadata struct {
-	Username []byte `json:"username"`
-	Color    []byte `json:"color"`
+	Username string `json:"username"`
+	Color    string `json:"color"`
 }
 
 const (
 	ExchangeKeys     WSMessageType = "exchange_keys"
 	EncryptedMessage WSMessageType = "encrypted_message"
+	UserEntered      WSMessageType = "user_entered_chat"
+	UserLeft         WSMessageType = "user_left_chat"
+	CurrentUsers     WSMessageType = "current_users"
 )
 
 type WSMessage struct {
@@ -55,8 +58,7 @@ func UnmarshalWSMessage(data []byte) (WSMessage, error) {
 type Connection struct {
 	Keys     cryptography.Keys
 	Conn     *websocket.Conn
-	Username []byte
-	Color    []byte
+	Metadata WSMetadata
 }
 
 func (ws *Connection) WriteMessage(text string) error {
@@ -94,7 +96,7 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 			Type:     ExchangeKeys,
 			Value:    cipherText,
 			Nonce:    nil,
-			Metadata: WSMetadata{Username: connection.Username, Color: connection.Color},
+			Metadata: WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
 		}
 		jsonMsg := msg.Marshal()
 
@@ -111,10 +113,10 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
 		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
 		if err != nil {
-			log.Printf("Could not decrypt message from client (%s): %s\n", connection.Username, err.Error())
+			log.Printf("Could not decrypt message from client (%s): %s\n", connection.Metadata.Username, err.Error())
 			return nil
 		}
-		log.Printf("Decrypted message (%s): \"%s\"\n", connection.Username, decrypted)
+		log.Printf("Decrypted message (%s): \"%s\"\n", connection.Metadata.Username, decrypted)
 
 		return decrypted
 
@@ -126,7 +128,7 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 }
 
 // This is used by the server to fan out a message from one client to others
-func (connection *Connection) RelayMessage(message string, fromUsername, fromColor []byte) {
+func (connection *Connection) RelayMessage(message, fromUsername, fromColor string) {
 	nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(message))
 	if err != nil {
 		log.Printf("Could not encrypt message: %s\n", err.Error())
@@ -161,7 +163,7 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		ui.EmitToUI(ui.ToUIKeysExchanged, "", nil)
+		ui.EmitToUI(ui.ToUIKeysExchanged, "", "")
 
 	case EncryptedMessage:
 		nonce := msg.Nonce
@@ -175,6 +177,16 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 		}
 
 		ui.EmitToUI(ui.ToUIMessage, string(decrypted), msg.Metadata.Color)
+	case UserEntered:
+		metadata := msg.Metadata
+		ui.EmitToUI(ui.ToUIUserEnteredChat, string(metadata.Username), metadata.Color)
+	case UserLeft:
+		metadata := msg.Metadata
+		ui.EmitToUI(ui.ToUIUserLeftChat, string(metadata.Username), metadata.Color)
+	case CurrentUsers:
+		metadata := msg.Metadata
+		value := msg.Value
+		ui.EmitToUI(ui.ToUICurrentUsers, string(value), metadata.Color)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}

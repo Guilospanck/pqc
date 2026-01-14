@@ -3,7 +3,8 @@ type Topic =
   | "update_message_area"
   | "send_message"
   | "update_input_bar"
-  | "add_message";
+  | "add_message"
+  | "update_users_panel";
 
 type SubscriberId = string;
 

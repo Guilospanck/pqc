@@ -1,9 +1,20 @@
-type GoToTUIMessageType = "connected" | "keys_exchanged" | "message";
+type GoToTUIMessageType =
+  | "connected"
+  | "keys_exchanged"
+  | "message"
+  | "user_entered_chat"
+  | "user_left_chat"
+  | "current_users";
 type TUIToGoMessageType = "connect" | "send";
 
 export type TUIGoCommunication = {
   type: TUIToGoMessageType | GoToTUIMessageType;
   value: string;
+  color: string;
+};
+
+export type ConnectedUser = {
+  username: string;
   color: string;
 };
 

@@ -4,12 +4,12 @@ import (
 	"math/rand"
 )
 
-func GetRandomName() []byte {
+func GetRandomName() string {
 	idx := rand.Intn(len(RANDOM_NAMES))
-	return []byte(RANDOM_NAMES[idx])
+	return RANDOM_NAMES[idx]
 }
 
-func GetRandomColor() []byte {
+func GetRandomColor() string {
 	idx := rand.Intn(len(RANDOM_COLORS))
-	return []byte(RANDOM_COLORS[idx])
+	return RANDOM_COLORS[idx]
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -44,7 +45,13 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("username", string(username))
 	w.Header().Add("color", string(color))
 
-	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Username: username, Color: color}
+	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
+
+	// Update this newly connected user with info regarding all connected users
+	srv.informNewUserOfAllCurrentUsers(&connection)
+
+	// Send to other clients the event of a newly connected client
+	srv.fanOutUserEnteredChat(username, color)
 
 	srv.connections = append(srv.connections, &connection)
 
@@ -52,15 +59,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		msg, err := connection.ReadMessage()
 		if err != nil {
 			log.Printf("Error reading from conn: %s\n", err.Error())
-			// Remove client from connections
-			for i, v := range srv.connections {
-				if v == &connection {
-					srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
-					srv.fanOutClientMessage(connection, []byte("Disconnected."))
-					break
-				}
-			}
-
+			srv.userDisconnected(&connection)
 			return
 		}
 
@@ -76,20 +75,87 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		srv.fanOutClientMessage(connection, decryptedMessageSent)
+		srv.fanOutUserMessage(connection, decryptedMessageSent)
 
 	}
 }
 
-func (srv *WSServer) fanOutClientMessage(client ws.Connection, decryptedMessage []byte) {
+// Remove client from connections and broadcast user left event
+func (srv *WSServer) userDisconnected(connection *ws.Connection) {
+	for i, v := range srv.connections {
+		if v != connection {
+			continue
+		}
+
+		srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
+
+		// Broadcast user left event to other clients
+		leftMsg := ws.WSMessage{
+			Type:     ws.UserLeft,
+			Value:    nil,
+			Nonce:    nil,
+			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
+		}
+		leftJsonMsg := leftMsg.Marshal()
+		for _, c := range srv.connections {
+			if err := c.WriteMessage(string(leftJsonMsg)); err != nil {
+				log.Printf("Error trying to inform clients that user left: %s\n", err.Error())
+			}
+		}
+
+		break
+	}
+}
+
+func (srv *WSServer) informNewUserOfAllCurrentUsers(newUser *ws.Connection) {
+	users := []ws.WSMetadata{}
+	for _, c := range srv.connections {
+		users = append(users, ws.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color})
+	}
+
+	marshalledUsers, err := json.Marshal(users)
+	if err != nil {
+		log.Println("Could not marshal users to inform newly connected user")
+		return
+	}
+
+	msg := ws.WSMessage{
+		Type:     ws.CurrentUsers,
+		Value:    marshalledUsers,
+		Nonce:    nil,
+		Metadata: ws.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color},
+	}
+	jsonMsg := msg.Marshal()
+
+	if err = newUser.WriteMessage(string(jsonMsg)); err != nil {
+		log.Println("Problem sending message to the client regarding the currently connected users")
+	}
+}
+
+func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
+	msg := ws.WSMessage{
+		Type:     ws.UserEntered,
+		Value:    nil,
+		Nonce:    nil,
+		Metadata: ws.WSMetadata{Username: username, Color: color},
+	}
+	jsonMsg := msg.Marshal()
+	for _, c := range srv.connections {
+		if err := c.WriteMessage(string(jsonMsg)); err != nil {
+			log.Printf("Error trying to inform the client %s that a new connection was made: %s\n", c.Metadata.Username, err.Error())
+		}
+	}
+}
+
+func (srv *WSServer) fanOutUserMessage(client ws.Connection, decryptedMessage []byte) {
 	for _, c := range srv.connections {
 		if string(c.Keys.Public) == string(client.Keys.Public) {
 			continue
 		}
 
-		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Username, string(decryptedMessage))
+		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Metadata.Username, string(decryptedMessage))
 
-		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", msgWithPublicKey, string(client.Username), c.Username)
-		c.RelayMessage(msgWithPublicKey, client.Username, client.Color)
+		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", msgWithPublicKey, client.Metadata.Username, c.Metadata.Username)
+		c.RelayMessage(msgWithPublicKey, client.Metadata.Username, client.Metadata.Color)
 	}
 }
