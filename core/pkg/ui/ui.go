@@ -12,6 +12,7 @@ const (
 	ToUIKeysExchanged   UIMessageType = "keys_exchanged"
 	ToUIMessage         UIMessageType = "message"
 	ToUIUserEnteredChat UIMessageType = "user_entered_chat"
+	ToUIUserLeftChat    UIMessageType = "user_left_chat"
 
 	FromUIConnect = "connect"
 	FromUISend    = "send"

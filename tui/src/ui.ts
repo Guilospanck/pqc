@@ -8,6 +8,7 @@ import { COLORS } from "./constants";
 
 let mainContainer: BoxRenderable | null = null;
 let messageArea: TextRenderable | null = null;
+let usersPanel: TextRenderable | null = null;
 let inputBar: TextRenderable | null = null;
 let statusText: TextRenderable | null = null;
 
@@ -66,17 +67,28 @@ export function setupUI(): void {
     backgroundColor: "#161b22",
     zIndex: 1,
     border: false,
+    flexDirection: "row",
   });
 
-  // Create message area that takes up most of the screen
+  // Create main content area (70% width)
+  const mainContentBox = new BoxRenderable(State.renderer, {
+    id: "mainContentBox",
+    width: "80%",
+    height: "100%",
+    backgroundColor: "#161b22",
+    zIndex: 2,
+    border: false,
+  });
+
+  // Create message area that takes up most of the screen height
   messageArea = new TextRenderable(State.renderer, {
     id: "messageArea",
     width: "100%",
     height: "85%",
-    zIndex: 2,
+    zIndex: 3,
     fg: "#f0f6fc",
   });
-  rootBox.add(messageArea);
+  mainContentBox.add(messageArea);
 
   // Create input bar at the bottom
   inputBar = new TextRenderable(State.renderer, {
@@ -84,10 +96,10 @@ export function setupUI(): void {
     content: "> ",
     width: "100%",
     height: 5, // Fixed height of 5 lines
-    zIndex: 3, // Higher z-index to appear on top
+    zIndex: 4, // Higher z-index to appear on top
     fg: "#58a6ff",
   });
-  rootBox.add(inputBar);
+  mainContentBox.add(inputBar);
 
   // Create status area at the very bottom
   statusText = new TextRenderable(State.renderer, {
@@ -95,12 +107,66 @@ export function setupUI(): void {
     content: "Ready - Type a message and press Enter to send",
     width: "100%",
     height: 3, // Fixed height of 3 lines
-    zIndex: 3, // Higher z-index to appear on top
+    zIndex: 4, // Higher z-index to appear on top
     fg: "#8b949e",
   });
-  rootBox.add(statusText);
+  mainContentBox.add(statusText);
+
+  rootBox.add(mainContentBox);
+
+  // Create users panel on the right (30% width)
+  usersPanel = new TextRenderable(State.renderer, {
+    id: "usersPanel",
+    width: "20%",
+    height: "85%",
+    zIndex: 3,
+    fg: "#f0f6fc",
+    bg: "#0d1117",
+  });
+  rootBox.add(usersPanel);
 
   State.renderer.root.add(rootBox);
+}
+
+export function updateUsersPanel(): void {
+  if (!usersPanel) return;
+
+  usersPanel.clear();
+
+  const userNodes: TextNodeRenderable[] = [];
+
+  // Add header
+  userNodes.push(
+    TextNodeRenderable.fromString("Connected Users", {
+      fg: "#58a6ff",
+      attributes: 1,
+    }),
+  );
+  userNodes.push(TextNodeRenderable.fromString("\n\n"));
+
+  if (State.connectedUsers.length === 0) {
+    userNodes.push(
+      TextNodeRenderable.fromString("No users connected", {
+        fg: "#8b949e",
+      }),
+    );
+  } else {
+    State.connectedUsers.forEach((user) => {
+      const userNode = TextNodeRenderable.fromNodes([
+        TextNodeRenderable.fromString("● ", {
+          fg: user.color,
+        }),
+        TextNodeRenderable.fromString(user.username, {
+          fg: user.color,
+        }),
+      ]);
+      userNodes.push(userNode);
+      userNodes.push(TextNodeRenderable.fromString("\n"));
+    });
+  }
+
+  const containerNode = TextNodeRenderable.fromNodes(userNodes);
+  usersPanel.add(containerNode);
 }
 
 export function updateInputBar(): void {
@@ -128,6 +194,7 @@ export function destroy(): void {
   mainContainer?.destroyRecursively();
   mainContainer = null;
   messageArea = null;
+  usersPanel = null;
   inputBar = null;
   statusText = null;
   ClearState();

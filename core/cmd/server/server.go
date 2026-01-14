@@ -47,18 +47,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
 
 	// Send to other clients the event of a newly connected client
-	msg := ws.WSMessage{
-		Type:     ws.NewConnection,
-		Value:    nil,
-		Nonce:    nil,
-		Metadata: ws.WSMetadata{Username: []byte(username), Color: []byte(color)},
-	}
-	jsonMsg := msg.Marshal()
-	for _, c := range srv.connections {
-		if err := c.WriteMessage(string(jsonMsg)); err != nil {
-			log.Printf("Error trying to inform the client that a new connection was made: %s\n", err.Error())
-		}
-	}
+	srv.fanOutUserEnteredChat(username, color)
 
 	srv.connections = append(srv.connections, &connection)
 
@@ -66,15 +55,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		msg, err := connection.ReadMessage()
 		if err != nil {
 			log.Printf("Error reading from conn: %s\n", err.Error())
-			// Remove client from connections
-			for i, v := range srv.connections {
-				if v == &connection {
-					srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
-					srv.fanOutClientMessage(connection, []byte("Disconnected."))
-					break
-				}
-			}
-
+			srv.userDisconnected(&connection)
 			return
 		}
 
@@ -93,6 +74,49 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		srv.fanOutClientMessage(connection, decryptedMessageSent)
 
 	}
+}
+
+// Remove client from connections and broadcast user left event
+func (srv *WSServer) userDisconnected(connection *ws.Connection) {
+	for i, v := range srv.connections {
+		if v != connection {
+			continue
+		}
+
+		srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
+
+		// Broadcast user left event to other clients
+		leftMsg := ws.WSMessage{
+			Type:     ws.UserLeft,
+			Value:    nil,
+			Nonce:    nil,
+			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
+		}
+		leftJsonMsg := leftMsg.Marshal()
+		for _, c := range srv.connections {
+			if err := c.WriteMessage(string(leftJsonMsg)); err != nil {
+				log.Printf("Error trying to inform clients that user left: %s\n", err.Error())
+			}
+		}
+
+		break
+	}
+}
+
+func (srv *WSServer) fanOutUserEnteredChat(username, color []byte) {
+	msg := ws.WSMessage{
+		Type:     ws.UserEntered,
+		Value:    nil,
+		Nonce:    nil,
+		Metadata: ws.WSMetadata{Username: username, Color: color},
+	}
+	jsonMsg := msg.Marshal()
+	for _, c := range srv.connections {
+		if err := c.WriteMessage(string(jsonMsg)); err != nil {
+			log.Printf("Error trying to inform the client %s that a new connection was made: %s\n", c.Metadata.Username, err.Error())
+		}
+	}
+
 }
 
 func (srv *WSServer) fanOutClientMessage(client ws.Connection, decryptedMessage []byte) {

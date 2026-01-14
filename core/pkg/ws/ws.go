@@ -21,7 +21,8 @@ type WSMetadata struct {
 const (
 	ExchangeKeys     WSMessageType = "exchange_keys"
 	EncryptedMessage WSMessageType = "encrypted_message"
-	NewConnection    WSMessageType = "new_connection"
+	UserEntered      WSMessageType = "user_entered_chat"
+	UserLeft         WSMessageType = "user_left_chat"
 )
 
 type WSMessage struct {
@@ -175,10 +176,12 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 		}
 
 		ui.EmitToUI(ui.ToUIMessage, string(decrypted), msg.Metadata.Color)
-	case NewConnection:
+	case UserEntered:
 		metadata := msg.Metadata
-
 		ui.EmitToUI(ui.ToUIUserEnteredChat, string(metadata.Username), metadata.Color)
+	case UserLeft:
+		metadata := msg.Metadata
+		ui.EmitToUI(ui.ToUIUserLeftChat, string(metadata.Username), metadata.Color)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}

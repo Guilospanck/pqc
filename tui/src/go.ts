@@ -2,6 +2,7 @@ import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type Stream from "node:stream";
 import { type TUIGoCommunication, type TUIMessage } from "./shared-types";
 import { EventHandler } from "./singletons/event-handler";
+import { addConnectedUser, removeConnectedUser } from "./singletons/state";
 
 let goProcess:
   | ChildProcessByStdio<Stream.Writable, Stream.Readable, Stream.Readable>
@@ -59,10 +60,13 @@ export function setupGo(): void {
         break;
       }
       case "user_entered_chat": {
-        addMessage({
-          ...tuiMessage,
-          text: message.value,
-        });
+        addConnectedUser(message.value, message.color);
+        EventHandler().notify("update_users_panel", {});
+        break;
+      }
+      case "user_left_chat": {
+        removeConnectedUser(message.value);
+        EventHandler().notify("update_users_panel", {});
         break;
       }
     }
