@@ -1,5 +1,7 @@
 # PQC
 
+![chat-tui](image.png)
+
 Just a simple way of working with Post-Quantum Cryptography (PQC) in Go. Also makes use of OpenTUI to create, well, a TUI.
 
 Disclaimer: not much thought was put into selecting the configurations/algorithms for these. Use at your own peril.
