@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"pqc/pkg/cryptography"
 	"pqc/pkg/ws"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -14,6 +15,8 @@ import (
 type WSServer struct {
 	connections []*ws.Connection
 }
+
+const PONG_WAIT = 60 * time.Second
 
 func (srv *WSServer) startServer() {
 	http.HandleFunc("/ws", srv.wsHandler)
@@ -59,6 +62,15 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	srv.connections = append(srv.connections, &connection)
 
+	// set up pong to extend deadline
+	conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
+		return nil
+	})
+
+	go srv.pingRoutine(&connection)
+
 	for {
 		msg, err := connection.ReadMessage()
 		if err != nil {
@@ -81,6 +93,14 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 		srv.fanOutUserMessage(connection, decryptedMessageSent)
 
+	}
+}
+
+func (srv *WSServer) pingRoutine(connection *ws.Connection) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		connection.Conn.WriteMessage(websocket.PingMessage, nil)
 	}
 }
 

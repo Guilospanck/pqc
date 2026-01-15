@@ -64,6 +64,7 @@ func (client *WSClient) connectToWSServer() {
 			msg, err := client.conn.ReadMessage()
 			if err != nil {
 				log.Printf("Error reading from conn: %s\n", err.Error())
+				// connection to server is dead...
 				return
 			}
 

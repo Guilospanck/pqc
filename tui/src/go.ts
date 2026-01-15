@@ -14,7 +14,7 @@ import {
 } from "./singletons/state";
 
 let goProcess:
-  | ChildProcessByStdio<Stream.Writable, Stream.Readable, Stream.Readable>
+  | ChildProcessByStdio<Stream.Writable, Stream.Readable, null>
   | undefined = undefined;
 
 const addMessage = (message: Omit<TUIMessage, "timestamp">) => {
@@ -24,7 +24,8 @@ const addMessage = (message: Omit<TUIMessage, "timestamp">) => {
 export function setupGo(): void {
   // start go client
   goProcess = spawn("../core/client", [], {
-    stdio: ["pipe", "pipe", "pipe"],
+    // TODO: go back to pipe
+    stdio: ["pipe", "pipe", "inherit"],
   });
 
   goProcess.on("exit", (code) => {
