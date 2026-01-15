@@ -40,26 +40,34 @@ func (client *WSClient) connectionManager() {
 
 			if attempts >= MAX_ATTEMPTS {
 				log.Println("We burned through all attempts.")
+				client.closeAndDisconnect()
 				return
 			}
 
+			// exponential backoff
 			wait := time.Duration(1<<attempts) * time.Second
 			time.Sleep(wait)
 
-			client.connectToWSServer()
+			log.Printf("Attempt #%d/5 to reconnect to server\n", attempts)
 			attempts++
+
+			// We try to connect to the WS server again. If it doesn't work,
+			// we trigger another reconnect
+			if err := client.connectToWSServer(); err != nil {
+				client.triggerReconnect()
+			}
 		}
 	}()
 }
 
-func (client *WSClient) connectToWSServer() {
+func (client *WSClient) connectToWSServer() error {
 	url := "ws://localhost:8080/ws"
 
-	log.Print("Connecting to", url)
+	log.Print("Connecting to ", url)
 	conn, res, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		log.Printf("Dial error: %s\n", err.Error())
-		return
+		return err
 	}
 
 	username := res.Header.Get("username")
@@ -74,7 +82,9 @@ func (client *WSClient) connectToWSServer() {
 	keys, err := cryptography.GenerateKeys()
 	if err != nil {
 		log.Printf("Error generating keys: %s\n", err.Error())
-		return
+		// If error while generating keys, we don't try to reconnect to the server,
+		// hence why returning nil
+		return nil
 	}
 	client.conn.Keys = keys
 
@@ -89,47 +99,44 @@ func (client *WSClient) connectToWSServer() {
 	// Send public key so we can exchange keys
 	if err := client.conn.WriteMessage(string(jsonMsg)); err != nil {
 		log.Printf("Error trying to send public key to server: %s\n", err.Error())
-		return
+		return nil
 	}
 
 	// Start ping routine
 	go client.pingRoutine()
 
-	// goroutine to read the messages from server
-	go func() {
-		for {
-			msg, err := client.conn.ReadMessage()
-			if err != nil {
-				log.Printf("Error reading from conn: %s\n", err.Error())
-				client.triggerReconnect()
-				return
-			}
+	// Read the messages from server
+	go client.readAndHandleServerMessages()
 
-			msgJson, err := ws.UnmarshalWSMessage(msg)
-			if err != nil {
-				log.Printf("Error unmarshalling message: %s\n", err.Error())
-				continue
-			}
-			client.conn.HandleServerMessage(msgJson)
+	return nil
+}
+
+func (client *WSClient) readAndHandleServerMessages() {
+	for {
+		msg, err := client.conn.ReadMessage()
+		if err != nil {
+			log.Printf("Error reading from conn: %s\n", err.Error())
+			client.triggerReconnect()
+			return
 		}
-	}()
+
+		msgJson, err := ws.UnmarshalWSMessage(msg)
+		if err != nil {
+			log.Printf("Error unmarshalling message: %s\n", err.Error())
+			continue
+		}
+		client.conn.HandleServerMessage(msgJson)
+	}
+
 }
 
 // TODO: see if we can reconnect with same credentials...
-// FIXME: probably the channel for reconnecting is size 1
-// and due to that it is not reconnecting user correctly?
 func (client *WSClient) triggerReconnect() {
 	// If reconnect was already triggered, it won't trigger again
 	select {
 	case client.reconnect <- struct{}{}:
 		log.Println("Triggering reconnect...")
 	default:
-	}
-}
-
-func (client *WSClient) closeConnection() {
-	if client.conn.Conn != nil {
-		client.conn.Conn.Close()
 	}
 }
 
@@ -147,9 +154,7 @@ func (client *WSClient) sendEncrypted(message string) {
 
 	// Quit command
 	if slices.Contains(QUIT_COMMANDS, text) {
-		log.Print("Closing connection.")
-		client.closeConnection()
-		os.Exit(0)
+		client.closeAndDisconnect()
 		return
 	}
 
@@ -174,6 +179,15 @@ func (client *WSClient) sendEncrypted(message string) {
 		// TODO: save the message somewhere and then retry it after connection
 		client.triggerReconnect()
 	}
+}
+
+func (client *WSClient) closeAndDisconnect() {
+	log.Print("Closing connection.")
+	if client.conn.Conn != nil {
+		client.conn.Conn.Close()
+	}
+
+	os.Exit(0)
 }
 
 func (client *WSClient) pingRoutine() {
