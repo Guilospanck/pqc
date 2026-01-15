@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"pqc/pkg/cryptography"
 	"pqc/pkg/ui"
@@ -32,6 +33,7 @@ type WSClient struct {
 
 func (client *WSClient) connectionManager() {
 	client.reconnect = make(chan struct{}, 1)
+	client.conn = ws.Connection{}
 
 	go func() {
 		attempts := 0
@@ -62,43 +64,38 @@ func (client *WSClient) connectionManager() {
 
 func (client *WSClient) connectToWSServer() error {
 	url := "ws://localhost:8080/ws"
+	log.Printf("Connecting to %s\n", url)
 
-	log.Println("Connecting to ", url)
-	conn, res, err := websocket.DefaultDialer.Dial(url, nil)
+	requestHeader := http.Header{}
+	if client.conn.Metadata.Color != "" || client.conn.Metadata.Username != "" {
+		requestHeader.Set("username", client.conn.Metadata.Username)
+		requestHeader.Set("color", client.conn.Metadata.Color)
+	}
+
+	conn, res, err := websocket.DefaultDialer.Dial(url, requestHeader)
 	if err != nil {
 		log.Printf("Dial error: %s\n", err.Error())
 		return err
 	}
+	client.conn.Conn = conn
 
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
-
+	client.conn.Metadata = ws.WSMetadata{Username: username, Color: color}
 	// Tell UI we're connected with some username and color
 	ui.EmitToUI(ui.ToUIConnected, username, color)
 
-	client.conn = ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
+	if client.conn.Keys.Public == nil {
+		if err := client.generateKeys(); err != nil {
+			// If error while generating keys, we don't try to reconnect to the server,
+			// hence why returning nil
+			return nil
+		}
+	}
 
-	// Generate keys
-	keys, err := cryptography.GenerateKeys()
-	if err != nil {
-		log.Printf("Error generating keys: %s\n", err.Error())
-		// If error while generating keys, we don't try to reconnect to the server,
+	if err := client.exchangeKeys(); err != nil {
+		// If error while exchanging keys, we don't try to reconnect to the server,
 		// hence why returning nil
-		return nil
-	}
-	client.conn.Keys = keys
-
-	msg := ws.WSMessage{
-		Type:     ws.ExchangeKeys,
-		Value:    keys.Public,
-		Nonce:    nil,
-		Metadata: ws.WSMetadata{Username: username, Color: color},
-	}
-	jsonMsg := msg.Marshal()
-
-	// Send public key so we can exchange keys
-	if err := client.conn.WriteMessage(string(jsonMsg)); err != nil {
-		log.Printf("Error trying to send public key to server: %s\n", err.Error())
 		return nil
 	}
 
@@ -107,6 +104,35 @@ func (client *WSClient) connectToWSServer() error {
 
 	// Read the messages from server
 	go client.readAndHandleServerMessages()
+
+	return nil
+}
+
+func (client *WSClient) generateKeys() error {
+	keys, err := cryptography.GenerateKeys()
+	if err != nil {
+		log.Printf("Error generating keys: %s\n", err.Error())
+		return err
+	}
+	client.conn.Keys = keys
+
+	return nil
+}
+
+func (client *WSClient) exchangeKeys() error {
+	msg := ws.WSMessage{
+		Type:     ws.ExchangeKeys,
+		Value:    client.conn.Keys.Public,
+		Nonce:    nil,
+		Metadata: client.conn.Metadata,
+	}
+	jsonMsg := msg.Marshal()
+
+	// Send public key so we can exchange keys
+	if err := client.conn.WriteMessage(string(jsonMsg)); err != nil {
+		log.Printf("Error trying to send public key to server: %s\n", err.Error())
+		return err
+	}
 
 	return nil
 }
@@ -130,7 +156,6 @@ func (client *WSClient) readAndHandleServerMessages() {
 
 }
 
-// TODO: see if we can reconnect with same credentials...
 func (client *WSClient) triggerReconnect() {
 	// If reconnect was already triggered, it won't trigger again
 	select {

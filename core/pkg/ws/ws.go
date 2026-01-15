@@ -61,6 +61,8 @@ type Connection struct {
 	Metadata WSMetadata
 }
 
+// FIXME: we will have to have some kind of lock here.
+// It panics if more than one goroutine tries to write the message
 func (ws *Connection) WriteMessage(text string) error {
 	err := ws.Conn.WriteMessage(websocket.TextMessage, []byte(text))
 	if err != nil {

@@ -30,8 +30,16 @@ var upgrader = websocket.Upgrader{
 }
 
 func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
-	username := GetRandomName()
-	color := GetRandomColor()
+	// If a client is reconnecting,
+	// then it will send what was its last known name and color.
+	// Also their keys, for that matter.
+	headers := r.Header
+	username := headers.Get("username")
+	color := headers.Get("color")
+	if username == "" || color == "" {
+		username = GetRandomName()
+		color = GetRandomColor()
+	}
 
 	// Send the generated username and color to the WSClient
 	// INFO: it needs to be *before* the upgrade
