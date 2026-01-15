@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"io"
 	"log"
 	"os"
 	"pqc/pkg/ui"
@@ -10,6 +11,18 @@ import (
 )
 
 func main() {
+	f, err := os.OpenFile(
+		"/tmp/ws-client-pqc.log",
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+		0644,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mw := io.MultiWriter(os.Stderr, f)
+	log.SetOutput(mw)
+
 	scanner := bufio.NewScanner(os.Stdin)
 
 	wsClient := WSClient{conn: ws.Connection{}}
