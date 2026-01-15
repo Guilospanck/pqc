@@ -58,6 +58,9 @@ func (client *WSClient) connectToWSServer() {
 		return
 	}
 
+	// Start ping routine
+	go client.conn.PingRoutine()
+
 	// goroutine to read the messages from server
 	go func() {
 		for {
