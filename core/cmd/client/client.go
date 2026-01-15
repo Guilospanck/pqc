@@ -8,14 +8,48 @@ import (
 	"pqc/pkg/ws"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
+const PONG_WAIT = 10 * time.Second
+const WRITE_WAIT = 5 * time.Second
+
+// INFO: ping period needs to be less than pong wait, otherwise it will
+// timeout the pong before we can ping
+const PING_PERIOD = 5 * time.Second
+
 var QUIT_COMMANDS = []string{"/quit", "/q", "/exit", ":wq", ":q", ":wqa"}
 
+// How many reconnect attemps we are able to do
+const MAX_ATTEMPTS int = 5
+
 type WSClient struct {
-	conn ws.Connection
+	conn      ws.Connection
+	reconnect chan struct{}
+}
+
+func (client *WSClient) connectionManager() {
+	client.reconnect = make(chan struct{}, 1)
+
+	go func() {
+		attempts := 0
+		for {
+			<-client.reconnect
+
+			if attempts >= MAX_ATTEMPTS {
+				log.Println("We burned through all attempts.")
+				return
+			}
+
+			wait := time.Duration(1<<attempts) * time.Second
+			time.Sleep(wait)
+
+			client.connectToWSServer()
+			attempts++
+		}
+	}()
 }
 
 func (client *WSClient) connectToWSServer() {
@@ -59,7 +93,7 @@ func (client *WSClient) connectToWSServer() {
 	}
 
 	// Start ping routine
-	go client.conn.PingRoutine()
+	go client.pingRoutine()
 
 	// goroutine to read the messages from server
 	go func() {
@@ -67,7 +101,7 @@ func (client *WSClient) connectToWSServer() {
 			msg, err := client.conn.ReadMessage()
 			if err != nil {
 				log.Printf("Error reading from conn: %s\n", err.Error())
-				// connection to server is dead...
+				client.triggerReconnect()
 				return
 			}
 
@@ -79,6 +113,18 @@ func (client *WSClient) connectToWSServer() {
 			client.conn.HandleServerMessage(msgJson)
 		}
 	}()
+}
+
+// TODO: see if we can reconnect with same credentials...
+// FIXME: probably the channel for reconnecting is size 1
+// and due to that it is not reconnecting user correctly?
+func (client *WSClient) triggerReconnect() {
+	// If reconnect was already triggered, it won't trigger again
+	select {
+	case client.reconnect <- struct{}{}:
+		log.Println("Triggering reconnect...")
+	default:
+	}
 }
 
 func (client *WSClient) closeConnection() {
@@ -125,5 +171,34 @@ func (client *WSClient) sendEncrypted(message string) {
 	// Send encrypted message
 	if err := client.conn.WriteMessage(string(jsonMsg)); err != nil {
 		log.Printf("Error writing message to server: %s\n", err.Error())
+		// TODO: save the message somewhere and then retry it after connection
+		client.triggerReconnect()
+	}
+}
+
+func (client *WSClient) pingRoutine() {
+	// set pong handler (server will respond to our ping with a pong)
+	// gorilla ws automatically responds to pings
+	client.conn.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
+	client.conn.Conn.SetPongHandler(func(string) error {
+		client.conn.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
+		return nil
+	})
+
+	// set ping routine
+	ticker := time.NewTicker(PING_PERIOD)
+	defer ticker.Stop()
+
+	for {
+		<-ticker.C
+
+		log.Printf("Client %s is pinging server...\n", client.conn.Metadata.Username)
+
+		client.conn.Conn.SetWriteDeadline(time.Now().Add(WRITE_WAIT))
+		if err := client.conn.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			log.Println("ping error:", err)
+			client.triggerReconnect()
+			return
+		}
 	}
 }

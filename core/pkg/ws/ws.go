@@ -6,12 +6,9 @@ import (
 	"log"
 	"pqc/pkg/cryptography"
 	"pqc/pkg/ui"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
-
-const PONG_WAIT = 60 * time.Second
 
 // Type of communications between WS client and WS server
 type WSMessageType string
@@ -192,18 +189,5 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 		ui.EmitToUI(ui.ToUICurrentUsers, string(value), metadata.Color)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
-	}
-}
-
-func (connection *Connection) PingRoutine() {
-	connection.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
-	connection.Conn.SetPongHandler(func(string) error {
-		connection.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
-		return nil
-	})
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		connection.Conn.WriteMessage(websocket.PingMessage, nil)
 	}
 }

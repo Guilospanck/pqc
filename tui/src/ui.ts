@@ -12,6 +12,11 @@ let inputBar: TextRenderable | null = null;
 let statusText: TextRenderable | null = null;
 let currentUserText: TextRenderable | null = null;
 
+// TODO: show a "connected to server" status somewhere.
+// maybe the bullet color of the username becomes green or
+// red depending on that
+
+// TODO: make it auto-scrollable
 export function updateMessageArea(): void {
   if (!messageArea) return;
 
@@ -150,6 +155,7 @@ export function setupUI(): void {
   State.renderer.root.add(rootBox);
 }
 
+// TODO: update on reconnect
 export function updateUsersPanel(): void {
   if (!usersPanel) return;
 

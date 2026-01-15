@@ -59,9 +59,6 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	srv.connections = append(srv.connections, &connection)
 
-	// Start ping routine
-	go connection.PingRoutine()
-
 	for {
 		msg, err := connection.ReadMessage()
 		if err != nil {

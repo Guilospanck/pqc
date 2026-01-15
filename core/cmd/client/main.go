@@ -14,6 +14,9 @@ func main() {
 
 	wsClient := WSClient{conn: ws.Connection{}}
 
+	// Start connection manager that will handle things like `reconnect`
+	wsClient.connectionManager()
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
