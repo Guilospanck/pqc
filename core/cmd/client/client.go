@@ -63,7 +63,7 @@ func (client *WSClient) connectionManager() {
 func (client *WSClient) connectToWSServer() error {
 	url := "ws://localhost:8080/ws"
 
-	log.Print("Connecting to ", url)
+	log.Println("Connecting to ", url)
 	conn, res, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		log.Printf("Dial error: %s\n", err.Error())
@@ -192,7 +192,7 @@ func (client *WSClient) closeAndDisconnect() {
 
 func (client *WSClient) pingRoutine() {
 	// set pong handler (server will respond to our ping with a pong)
-	// gorilla ws automatically responds to pings
+	// gorilla ws server automatically responds to pings
 	client.conn.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
 	client.conn.Conn.SetPongHandler(func(string) error {
 		client.conn.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
