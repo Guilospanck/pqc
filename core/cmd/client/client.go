@@ -9,6 +9,7 @@ import (
 	"pqc/pkg/ws"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -29,6 +30,7 @@ const MAX_ATTEMPTS int = 5
 type WSClient struct {
 	conn      ws.Connection
 	reconnect chan struct{}
+	attempts  atomic.Int32
 }
 
 func (client *WSClient) connectionManager() {
@@ -36,11 +38,13 @@ func (client *WSClient) connectionManager() {
 	client.conn = ws.Connection{}
 
 	go func() {
-		attempts := 0
 		for {
 			<-client.reconnect
+			client.userDisconnected()
 
-			if attempts >= MAX_ATTEMPTS {
+			attempts := client.attempts.Load()
+
+			if attempts >= int32(MAX_ATTEMPTS) {
 				log.Println("We burned through all attempts.")
 				client.closeAndDisconnect()
 				return
@@ -51,7 +55,7 @@ func (client *WSClient) connectionManager() {
 			time.Sleep(wait)
 
 			log.Printf("Attempt #%d/5 to reconnect to server\n", attempts)
-			attempts++
+			client.attempts.Add(1)
 
 			// We try to connect to the WS server again. If it doesn't work,
 			// we trigger another reconnect
@@ -78,6 +82,7 @@ func (client *WSClient) connectToWSServer() error {
 		return err
 	}
 	client.conn.Conn = conn
+	client.attempts.Store(0)
 
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
@@ -164,7 +169,6 @@ func (client *WSClient) triggerReconnect() {
 	select {
 	case client.reconnect <- struct{}{}:
 		log.Println("Triggering reconnect...")
-		client.userDisconnected()
 	default:
 	}
 }
