@@ -55,31 +55,43 @@ func UnmarshalWSMessage(data []byte) (WSMessage, error) {
 	return msg, nil
 }
 
-type Connection struct {
-	Keys     cryptography.Keys
-	Conn     *websocket.Conn
-	Metadata WSMetadata
+type WriteMessageRequest struct {
+	msgType int // websocket.TextMessage, websocket.PingMessage
+	text    []byte
+	err     chan error
 }
 
-// FIXME: we will have to have some kind of lock here.
-// It panics if more than one goroutine tries to write the message
-func (ws *Connection) WriteMessage(text string) error {
-	err := ws.Conn.WriteMessage(websocket.TextMessage, []byte(text))
-	if err != nil {
-		log.Println("Write error:", err)
-		return err
-	}
+type Connection struct {
+	Keys            cryptography.Keys
+	Conn            *websocket.Conn
+	Metadata        WSMetadata
+	WriteMessageReq chan WriteMessageRequest
+}
 
-	return nil
+func (ws *Connection) WriteLoop() {
+	for msg := range ws.WriteMessageReq {
+		text := msg.text
+		msgType := msg.msgType
+
+		err := ws.Conn.WriteMessage(msgType, text)
+		msg.err <- err
+		if err != nil {
+			log.Println("Error while writing message. Returning from loop")
+			return
+		}
+	}
+}
+
+func (ws *Connection) WriteMessage(text string, msgType int) error {
+	err := make(chan error, 1)
+
+	ws.WriteMessageReq <- WriteMessageRequest{msgType: msgType, text: []byte(text), err: err}
+	return <-err
 }
 
 func (ws *Connection) ReadMessage() ([]byte, error) {
 	_, msg, err := ws.Conn.ReadMessage()
-	if err != nil {
-		return []byte(""), err
-	}
-
-	return msg, nil
+	return msg, err
 }
 
 // To be handled by the server
@@ -103,7 +115,7 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 		jsonMsg := msg.Marshal()
 
 		// send ciphertext to client so we can exchange keys
-		if err := connection.WriteMessage(string(jsonMsg)); err != nil {
+		if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 			log.Printf("Could not send message to client: %s\n", err.Error())
 			return nil
 		}
@@ -146,7 +158,7 @@ func (connection *Connection) RelayMessage(message, fromUsername, fromColor stri
 	jsonMsg := msg.Marshal()
 
 	// send encrypted message
-	if err := connection.WriteMessage(string(jsonMsg)); err != nil {
+	if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Printf("Could not send message to client: %s\n", err.Error())
 	}
 

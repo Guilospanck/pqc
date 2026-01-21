@@ -156,6 +156,8 @@ export function setupUI(): void {
 }
 
 // TODO: update on reconnect
+// We need to also update the users on reconnect because there are some mismatches
+// probably due to race condition...
 export function updateUsersPanel(): void {
   if (!usersPanel) return;
 

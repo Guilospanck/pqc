@@ -34,9 +34,6 @@ type WSClient struct {
 }
 
 func (client *WSClient) connectionManager() {
-	client.reconnect = make(chan struct{}, 1)
-	client.conn = ws.Connection{}
-
 	go func() {
 		for {
 			<-client.reconnect
@@ -54,7 +51,7 @@ func (client *WSClient) connectionManager() {
 			wait := time.Duration(1<<attempts) * time.Second
 			time.Sleep(wait)
 
-			log.Printf("Attempt #%d/5 to reconnect to server\n", attempts)
+			log.Printf("Attempt #%d/5 to reconnect to server\n", attempts+1)
 			client.attempts.Add(1)
 
 			// We try to connect to the WS server again. If it doesn't work,
@@ -67,6 +64,8 @@ func (client *WSClient) connectionManager() {
 }
 
 func (client *WSClient) connectToWSServer() error {
+	client.attempts.Store(0)
+
 	url := "ws://localhost:8080/ws"
 	log.Printf("Connecting to %s\n", url)
 
@@ -82,7 +81,15 @@ func (client *WSClient) connectToWSServer() error {
 		return err
 	}
 	client.conn.Conn = conn
-	client.attempts.Store(0)
+
+	// Start write loop
+	go client.conn.WriteLoop()
+
+	// Start ping routine
+	go client.pingRoutine()
+
+	// Start the read loop
+	go client.readAndHandleServerMessages()
 
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
@@ -103,12 +110,6 @@ func (client *WSClient) connectToWSServer() error {
 		// hence why returning nil
 		return nil
 	}
-
-	// Start ping routine
-	go client.pingRoutine()
-
-	// Read the messages from server
-	go client.readAndHandleServerMessages()
 
 	return nil
 }
@@ -134,7 +135,7 @@ func (client *WSClient) exchangeKeys() error {
 	jsonMsg := msg.Marshal()
 
 	// Send public key so we can exchange keys
-	if err := client.conn.WriteMessage(string(jsonMsg)); err != nil {
+	if err := client.conn.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Printf("Error trying to send public key to server: %s\n", err.Error())
 		return err
 	}
@@ -158,12 +159,8 @@ func (client *WSClient) readAndHandleServerMessages() {
 		}
 		client.conn.HandleServerMessage(msgJson)
 	}
-
 }
 
-// FIXME: there's some problem with reconnection...It duplicates sometimes
-// in the UI the people there. Also, it doesn't work for some connections -> it doesn't connect.
-// PROBABLY IS REGARDING THE RECONNECT ATTEMPTS. We need to reset that...
 func (client *WSClient) triggerReconnect() {
 	// If reconnect was already triggered, it won't trigger again
 	select {
@@ -207,7 +204,7 @@ func (client *WSClient) sendEncrypted(message string) {
 	jsonMsg := msg.Marshal()
 
 	// Send encrypted message
-	if err := client.conn.WriteMessage(string(jsonMsg)); err != nil {
+	if err := client.conn.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Printf("Error writing message to server: %s\n", err.Error())
 		// TODO: save the message somewhere and then retry it after connection
 		client.triggerReconnect()
@@ -242,7 +239,7 @@ func (client *WSClient) pingRoutine() {
 		log.Printf("Client %s is pinging server...\n", client.conn.Metadata.Username)
 
 		client.conn.Conn.SetWriteDeadline(time.Now().Add(WRITE_WAIT))
-		if err := client.conn.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+		if err := client.conn.WriteMessage("", websocket.PingMessage); err != nil {
 			log.Println("ping error:", err)
 			client.triggerReconnect()
 			return

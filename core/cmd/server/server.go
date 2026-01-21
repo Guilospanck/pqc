@@ -57,7 +57,10 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("New connection: %s - %s\n", username, color)
 
-	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
+	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}, WriteMessageReq: make(chan ws.WriteMessageRequest, 10)}
+
+	// Start write loop
+	go connection.WriteLoop()
 
 	// Update this newly connected user with info regarding all connected users
 	srv.informNewUserOfAllCurrentUsers(&connection)
@@ -67,11 +70,16 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	srv.connections = append(srv.connections, &connection)
 
+	// Start read loop
+	srv.readAndHandleClientMessages(&connection)
+}
+
+func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 	for {
 		msg, err := connection.ReadMessage()
 		if err != nil {
 			log.Printf("Error reading from conn: %s\n", err.Error())
-			srv.userDisconnected(&connection)
+			srv.userDisconnected(connection)
 			return
 		}
 
@@ -88,7 +96,6 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		srv.fanOutUserMessage(connection, decryptedMessageSent)
-
 	}
 }
 
@@ -110,7 +117,7 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 		}
 		leftJsonMsg := leftMsg.Marshal()
 		for _, c := range srv.connections {
-			if err := c.WriteMessage(string(leftJsonMsg)); err != nil {
+			if err := c.WriteMessage(string(leftJsonMsg), websocket.TextMessage); err != nil {
 				log.Printf("Error trying to inform clients that user left: %s\n", err.Error())
 			}
 		}
@@ -139,7 +146,7 @@ func (srv *WSServer) informNewUserOfAllCurrentUsers(newUser *ws.Connection) {
 	}
 	jsonMsg := msg.Marshal()
 
-	if err = newUser.WriteMessage(string(jsonMsg)); err != nil {
+	if err = newUser.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Println("Problem sending message to the client regarding the currently connected users")
 	}
 }
@@ -153,13 +160,13 @@ func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
 	}
 	jsonMsg := msg.Marshal()
 	for _, c := range srv.connections {
-		if err := c.WriteMessage(string(jsonMsg)); err != nil {
+		if err := c.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 			log.Printf("Error trying to inform the client %s that a new connection was made: %s\n", c.Metadata.Username, err.Error())
 		}
 	}
 }
 
-func (srv *WSServer) fanOutUserMessage(client ws.Connection, decryptedMessage []byte) {
+func (srv *WSServer) fanOutUserMessage(client *ws.Connection, decryptedMessage []byte) {
 	for _, c := range srv.connections {
 		if string(c.Keys.Public) == string(client.Keys.Public) {
 			continue

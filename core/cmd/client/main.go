@@ -15,7 +15,7 @@ func main() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 
-	wsClient := WSClient{conn: ws.Connection{}}
+	wsClient := WSClient{conn: ws.Connection{WriteMessageReq: make(chan ws.WriteMessageRequest, 10)}, reconnect: make(chan struct{}, 1)}
 
 	// Start connection manager that will handle things like `reconnect`
 	wsClient.connectionManager()
