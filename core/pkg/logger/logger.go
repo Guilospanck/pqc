@@ -1,0 +1,22 @@
+package logger
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"os"
+)
+
+func CreateMultiWriterLogger(filepath string) {
+	f, err := os.OpenFile(
+		fmt.Sprintf("/tmp/%s.log", filepath),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+		0644,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mw := io.MultiWriter(os.Stderr, f)
+	log.SetOutput(mw)
+}
