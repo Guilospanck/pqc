@@ -156,11 +156,15 @@ func (client *WSClient) readAndHandleServerMessages() {
 
 }
 
+// FIXME: there's some problem with reconnection...It duplicates sometimes
+// in the UI the people there. Also, it doesn't work for some connections -> it doesn't connect.
+// PROBABLY IS REGARDING THE RECONNECT ATTEMPTS. We need to reset that...
 func (client *WSClient) triggerReconnect() {
 	// If reconnect was already triggered, it won't trigger again
 	select {
 	case client.reconnect <- struct{}{}:
 		log.Println("Triggering reconnect...")
+		client.userDisconnected()
 	default:
 	}
 }
@@ -240,4 +244,12 @@ func (client *WSClient) pingRoutine() {
 			return
 		}
 	}
+}
+
+// Inform TUI that user is disconnected
+func (client *WSClient) userDisconnected() {
+	connection := client.conn
+
+	metadata := connection.Metadata
+	ui.EmitToUI(ui.ToUIDisconnected, string(metadata.Username), metadata.Color)
 }

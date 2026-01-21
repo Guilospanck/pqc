@@ -9,6 +9,7 @@ type StateType = {
   connectedUsers: Array<ConnectedUser>;
   username: string;
   userColor: string;
+  isConnected: boolean;
 };
 
 export const State: StateType = {
@@ -19,6 +20,7 @@ export const State: StateType = {
   connectedUsers: [],
   username: "",
   userColor: "",
+  isConnected: false,
 };
 
 export function ClearState(): void {
@@ -28,6 +30,7 @@ export function ClearState(): void {
   State.connectedUsers = [];
   State.username = "";
   State.userColor = "";
+  State.isConnected = false;
 }
 
 export function addMultipleConnectedUsers(users: Array<ConnectedUser>): void {
@@ -49,6 +52,8 @@ export function addConnectedUser(username: string, color: string): void {
   });
 }
 
+// FIXME: this can be a problem if the server generates the same username
+// for more than one user.
 export function removeConnectedUser(username: string): void {
   if (username === State.username) return;
 

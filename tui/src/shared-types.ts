@@ -1,5 +1,6 @@
 type GoToTUIMessageType =
   | "connected"
+  | "disconnected"
   | "keys_exchanged"
   | "message"
   | "user_entered_chat"
