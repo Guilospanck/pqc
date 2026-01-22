@@ -62,6 +62,8 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	// Start write loop
 	go connection.WriteLoop()
 
+	<-connection.WriteLoopReady
+
 	// Update this newly connected user with info regarding all connected users
 	srv.informNewUserOfAllCurrentUsers(&connection)
 

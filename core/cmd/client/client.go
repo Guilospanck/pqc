@@ -85,6 +85,8 @@ func (client *WSClient) connectToWSServer() error {
 	// Start write loop
 	go client.conn.WriteLoop()
 
+	<-client.conn.WriteLoopReady
+
 	// Start ping routine
 	go client.pingRoutine()
 

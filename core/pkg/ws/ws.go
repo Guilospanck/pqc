@@ -2,6 +2,7 @@ package ws
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"pqc/pkg/cryptography"
@@ -66,9 +67,15 @@ type Connection struct {
 	Conn            *websocket.Conn
 	Metadata        WSMetadata
 	WriteMessageReq chan WriteMessageRequest
+
+	WriteLoopReady chan struct{}
+	done           chan struct{}
 }
 
 func (ws *Connection) WriteLoop() {
+	close(ws.WriteLoopReady)
+	defer close(ws.done)
+
 	for msg := range ws.WriteMessageReq {
 		text := msg.text
 		msgType := msg.msgType
@@ -82,11 +89,31 @@ func (ws *Connection) WriteLoop() {
 	}
 }
 
+// Understanding the channels/select here:
+// 1. Can I hand the letter to the courier?
+// 2. Will the courier ever reply?
 func (ws *Connection) WriteMessage(text string, msgType int) error {
-	err := make(chan error, 1)
+	errCh := make(chan error, 1)
 
-	ws.WriteMessageReq <- WriteMessageRequest{msgType: msgType, text: []byte(text), err: err}
-	return <-err
+	req := WriteMessageRequest{
+		msgType: msgType,
+		text:    []byte(text),
+		err:     errCh,
+	}
+
+	select {
+	case ws.WriteMessageReq <- req:
+	case <-ws.done:
+		return errors.New("connection closed")
+	}
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ws.done:
+		return errors.New("connection closed")
+	}
+
 }
 
 func (ws *Connection) ReadMessage() ([]byte, error) {
