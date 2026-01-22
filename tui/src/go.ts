@@ -94,12 +94,15 @@ export function setupGo(): void {
           break;
         }
         case "user_entered_chat": {
-          addConnectedUser(message.value, message.color);
+          addConnectedUser({ username: message.value, color: message.color });
           EventHandler().notify("update_users_panel", {});
           break;
         }
         case "user_left_chat": {
-          removeConnectedUser(message.value);
+          removeConnectedUser({
+            username: message.value,
+            color: message.color,
+          });
           EventHandler().notify("update_users_panel", {});
           break;
         }
