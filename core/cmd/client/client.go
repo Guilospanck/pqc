@@ -34,37 +34,40 @@ type WSClient struct {
 }
 
 func NewClient() *WSClient {
-	return &WSClient{conn: ws.Connection{WriteMessageReq: make(chan ws.WriteMessageRequest, 10), WriteLoopReady: make(chan struct{}, 1)}, reconnect: make(chan struct{}, 1)}
+	return &WSClient{
+		conn: ws.Connection{
+			WriteMessageReq: make(chan ws.WriteMessageRequest, 10),
+			WriteLoopReady:  make(chan struct{}, 1),
+		},
+		reconnect: make(chan struct{}, 1)}
 }
 
 func (client *WSClient) connectionManager() {
-	go func() {
-		for {
-			<-client.reconnect
-			client.userDisconnected()
+	for {
+		<-client.reconnect
+		client.userDisconnected()
 
-			attempts := client.attempts.Load()
+		attempts := client.attempts.Load()
 
-			if attempts >= int32(MAX_ATTEMPTS) {
-				log.Println("We burned through all attempts.")
-				client.closeAndDisconnect()
-				return
-			}
-
-			// exponential backoff
-			wait := time.Duration(1<<attempts) * time.Second
-			time.Sleep(wait)
-
-			log.Printf("Attempt #%d/5 to reconnect to server\n", attempts+1)
-			client.attempts.Add(1)
-
-			// We try to connect to the WS server again. If it doesn't work,
-			// we trigger another reconnect
-			if err := client.connectToWSServer(); err != nil {
-				client.triggerReconnect()
-			}
+		if attempts >= int32(MAX_ATTEMPTS) {
+			log.Println("We burned through all attempts.")
+			client.closeAndDisconnect()
+			return
 		}
-	}()
+
+		// exponential backoff
+		wait := time.Duration(1<<attempts) * time.Second
+		time.Sleep(wait)
+
+		log.Printf("Attempt #%d/5 to reconnect to server\n", attempts+1)
+		client.attempts.Add(1)
+
+		// We try to connect to the WS server again. If it doesn't work,
+		// we trigger another reconnect
+		if err := client.connectToWSServer(); err != nil {
+			client.triggerReconnect()
+		}
+	}
 }
 
 func (client *WSClient) connectToWSServer() error {
