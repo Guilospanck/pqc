@@ -6,6 +6,7 @@ import (
 
 func main() {
 	logger.CreateMultiWriterLogger("ws-server-pqc")
-	server := WSServer{connections: nil}
+
+	server := NewServer()
 	server.startServer()
 }

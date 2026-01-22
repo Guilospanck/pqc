@@ -15,6 +15,10 @@ type WSServer struct {
 	connections []*ws.Connection
 }
 
+func NewServer() *WSServer {
+	return &WSServer{connections: nil}
+}
+
 func (srv *WSServer) startServer() {
 	http.HandleFunc("/ws", srv.wsHandler)
 
@@ -57,7 +61,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("New connection: %s - %s\n", username, color)
 
-	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}, WriteMessageReq: make(chan ws.WriteMessageRequest, 10)}
+	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}, WriteMessageReq: make(chan ws.WriteMessageRequest, 10), WriteLoopReady: make(chan struct{}, 1)}
 
 	// Start write loop
 	go connection.WriteLoop()

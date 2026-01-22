@@ -7,19 +7,17 @@ import (
 	"os"
 	"pqc/pkg/logger"
 	"pqc/pkg/ui"
-	"pqc/pkg/ws"
 )
 
 func main() {
 	logger.CreateMultiWriterLogger("ws-client-pqc")
 
-	scanner := bufio.NewScanner(os.Stdin)
-
-	wsClient := WSClient{conn: ws.Connection{WriteMessageReq: make(chan ws.WriteMessageRequest, 10)}, reconnect: make(chan struct{}, 1)}
+	wsClient := NewClient()
 
 	// Start connection manager that will handle things like `reconnect`
 	wsClient.connectionManager()
 
+	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 

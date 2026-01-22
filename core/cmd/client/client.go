@@ -33,6 +33,10 @@ type WSClient struct {
 	attempts  atomic.Int32
 }
 
+func NewClient() *WSClient {
+	return &WSClient{conn: ws.Connection{WriteMessageReq: make(chan ws.WriteMessageRequest, 10), WriteLoopReady: make(chan struct{}, 1)}, reconnect: make(chan struct{}, 1)}
+}
+
 func (client *WSClient) connectionManager() {
 	go func() {
 		for {
