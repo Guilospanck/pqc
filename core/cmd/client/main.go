@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"log"
 	"os"
@@ -12,7 +13,9 @@ import (
 func main() {
 	logger.CreateMultiWriterLogger("ws-client-pqc")
 
-	wsClient := NewClient()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	wsClient := NewClient(ctx, cancel)
 
 	// Start connection manager that will handle things like `reconnect`
 	go wsClient.connectionManager()

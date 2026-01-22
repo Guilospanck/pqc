@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,10 +14,14 @@ import (
 
 type WSServer struct {
 	connections []*ws.Connection
+	ctx         context.Context
 }
 
-func NewServer() *WSServer {
-	return &WSServer{connections: nil}
+func NewServer(ctx context.Context) *WSServer {
+	return &WSServer{
+		connections: nil,
+		ctx:         ctx,
+	}
 }
 
 func (srv *WSServer) startServer() {
@@ -64,7 +69,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}, WriteMessageReq: make(chan ws.WriteMessageRequest, 10), WriteLoopReady: make(chan struct{}, 1)}
 
 	// Start write loop
-	go connection.WriteLoop()
+	go connection.WriteLoop(srv.ctx)
 
 	<-connection.WriteLoopReady
 

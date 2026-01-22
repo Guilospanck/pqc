@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,18 +73,33 @@ type Connection struct {
 	done           chan struct{}
 }
 
-func (ws *Connection) WriteLoop() {
+func (ws *Connection) WriteLoop(ctx context.Context) {
 	close(ws.WriteLoopReady)
 	defer close(ws.done)
 
-	for msg := range ws.WriteMessageReq {
-		text := msg.text
-		msgType := msg.msgType
+	for {
+		select {
+		case msg := <-ws.WriteMessageReq:
 
-		err := ws.Conn.WriteMessage(msgType, text)
-		msg.err <- err
-		if err != nil {
-			log.Println("Error while writing message. Returning from loop")
+			text := msg.text
+			msgType := msg.msgType
+
+			err := ws.Conn.WriteMessage(msgType, text)
+
+			select {
+			case msg.err <- err:
+			case <-ctx.Done():
+				log.Println("Context cancelled. Returning from write loop.")
+				return
+			}
+
+			if err != nil {
+				log.Println("Error while writing message. Returning from write loop")
+				return
+			}
+
+		case <-ctx.Done():
+			log.Println("Context cancelled. Returning from write loop.")
 			return
 		}
 	}
