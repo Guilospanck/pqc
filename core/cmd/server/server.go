@@ -16,6 +16,7 @@ import (
 type clientId string
 
 type WSServer struct {
+	// TODO: create concept of rooms
 	connections   map[clientId]*ws.Connection
 	usedUsernames []string
 	mu            sync.RWMutex

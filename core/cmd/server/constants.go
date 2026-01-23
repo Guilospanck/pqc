@@ -102,25 +102,24 @@ var RANDOM_NAMES = []string{
 }
 
 var RANDOM_COLORS = []string{
-	"#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#A833FF",
-	"#33FFF0", "#F0FF33", "#FF8D33", "#33FF8D", "#8D33FF",
-	"#FF3380", "#80FF33", "#33A8FF", "#FFA833", "#33FFB2",
-	"#B233FF", "#FF33F0", "#33FF66", "#66FF33", "#FF3366",
-	"#3366FF", "#FF6633", "#33FFFF", "#FF33FF", "#A8FF33",
-	"#33FFA8", "#FF33CC", "#CC33FF", "#33CCFF", "#FF33CC",
-	"#CCFF33", "#33FFCC", "#FFCC33", "#CC33FF", "#33FF99",
-	"#99FF33", "#FF3399", "#3399FF", "#FF9933", "#33FF33",
-	"#33CC99", "#9933CC", "#CC9933", "#33CC66", "#66CC33",
-	"#CC3366", "#3366CC", "#CC6633", "#33CCFF", "#FF6633",
-	"#33FF4D", "#4DFF33", "#FF334D", "#4D33FF", "#FF4D33",
-	"#33FF80", "#8033FF", "#FF8033", "#33FF99", "#99FF33",
-	"#FF3399", "#3399FF", "#FF9933", "#33FF66", "#66FF33",
-	"#CC33CC", "#33CC33", "#CC3366", "#3366CC", "#CC6633",
-	"#33CCFF", "#FF6633", "#33FF4D", "#4DFF33", "#FF334D",
-	"#4D33FF", "#FF4D33", "#33FF80", "#8033FF", "#FF8033",
-	"#33FFB2", "#B2FF33", "#FF33B2", "#33B2FF", "#FFB233",
-	"#33FFCC", "#CCFF33", "#FF33CC", "#33CCFF", "#FFCC33",
-	"#33FFEE", "#EEFF33", "#FF33EE", "#33EEFF", "#FFEE33",
-	"#33DDFF", "#DDFF33", "#FF33DD", "#33FFDD", "#DD33FF",
-	"#FFDD33", "#33FF22", "#22FF33", "#FF3322", "#2233FF",
+	"#E6194B", // red
+	"#3CB44B", // green
+	"#FFE119", // yellow
+	"#4363D8", // blue
+	"#F58231", // orange
+	"#911EB4", // purple
+	"#46F0F0", // cyan
+	"#F032E6", // magenta
+	"#BCF60C", // lime
+	"#FABEBE", // pink
+	"#008080", // teal
+	"#E6BEFF", // lavender
+	"#9A6324", // brown
+	"#FFFAC8", // beige
+	"#800000", // maroon
+	"#AAFFC3", // mint
+	"#808000", // olive
+	"#FFD8B1", // apricot
+	"#000075", // navy
+	"#808080", // gray
 }
