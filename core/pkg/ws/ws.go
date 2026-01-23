@@ -85,6 +85,12 @@ func NewEmptyConnection() Connection {
 	}
 }
 
+func (ws *Connection) ResetChannels() {
+	ws.WriteMessageReq = make(chan WriteMessageRequest, 10)
+	ws.WriteLoopReady = make(chan struct{})
+	ws.Done = make(chan struct{})
+}
+
 func (ws *Connection) WriteLoop(ctx context.Context) {
 	log.Println("Starting WRITE loop...")
 

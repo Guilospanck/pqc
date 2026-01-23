@@ -36,12 +36,10 @@ type WSClient struct {
 	cancelFunc context.CancelFunc
 }
 
-func NewClient(ctx context.Context, cancel context.CancelFunc) *WSClient {
+func NewClient() *WSClient {
 	return &WSClient{
-		conn:       ws.NewEmptyConnection(),
-		reconnect:  make(chan struct{}, 1),
-		ctx:        ctx,
-		cancelFunc: cancel,
+		conn:      ws.NewEmptyConnection(),
+		reconnect: make(chan struct{}, 1),
 	}
 }
 
@@ -82,6 +80,10 @@ func (client *WSClient) connectToWSServer() error {
 	url := "ws://localhost:8080/ws"
 	log.Printf("Connecting to %s\n", url)
 
+	// Reset connection channels because
+	// we might have closed them on reconnection.
+	client.conn.ResetChannels()
+
 	requestHeader := http.Header{}
 	if client.conn.Metadata.Color != "" || client.conn.Metadata.Username != "" {
 		requestHeader.Set("username", client.conn.Metadata.Username)
@@ -97,6 +99,11 @@ func (client *WSClient) connectToWSServer() error {
 	log.Println("Dialing to WS server completed successfully!")
 
 	client.attempts.Store(1)
+
+	// Start a new context
+	ctx, cancel := context.WithCancel(context.Background())
+	client.ctx = ctx
+	client.cancelFunc = cancel
 
 	// Start write loop
 	go client.conn.WriteLoop(client.ctx)

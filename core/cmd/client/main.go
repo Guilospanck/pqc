@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"log"
 	"os"
@@ -15,8 +14,7 @@ func main() {
 
 	defer log.Println("> Client is gone!")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	wsClient := NewClient(ctx, cancel)
+	wsClient := NewClient()
 
 	// Start connection manager that will handle things like `reconnect`
 	go wsClient.connectionManager()
