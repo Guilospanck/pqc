@@ -151,9 +151,6 @@ export function setupUI(): void {
   State.renderer.root.add(rootBox);
 }
 
-// TODO: update on reconnect
-// We need to also update the users on reconnect because there are some mismatches
-// probably due to race condition...
 export function updateUsersPanel(): void {
   if (!usersPanel) return;
 
@@ -178,6 +175,8 @@ export function updateUsersPanel(): void {
     );
   } else {
     State.connectedUsers.forEach((user) => {
+      if (user.username === State.username) return;
+
       const userNode = TextNodeRenderable.fromNodes([
         TextNodeRenderable.fromString("● ", {
           fg: user.color,

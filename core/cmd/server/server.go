@@ -34,22 +34,21 @@ func (srv *WSServer) addConnection(connection *ws.Connection) {
 	srv.connections[clientId(connection.Metadata.Username)] = connection
 }
 
-func (srv *WSServer) removeConnection(username string) {
+func (srv *WSServer) removeConnection(id clientId) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 
-	delete(srv.connections, clientId(username))
+	delete(srv.connections, id)
 }
 
-func (srv *WSServer) getCurrentConnections() []*ws.Connection {
+func (srv *WSServer) currentConnections() []ws.Connection {
 	srv.mu.RLock()
 	defer srv.mu.RUnlock()
 
-	connections := make([]*ws.Connection, 0, len(srv.connections))
+	connections := make([]ws.Connection, 0, len(srv.connections))
 
 	for _, c := range srv.connections {
-
-		connections = append(connections, c)
+		connections = append(connections, *c)
 	}
 
 	return connections
@@ -101,6 +100,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	connection.Conn = conn
+	srv.addConnection(&connection)
 
 	log.Printf("New connection: %s - %s\n", username, color)
 
@@ -114,8 +114,6 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Send to other clients the event of a newly connected client
 	srv.fanOutUserEnteredChat(username, color)
-
-	srv.addConnection(&connection)
 
 	// Start read loop
 	srv.readAndHandleClientMessages(&connection)
@@ -148,14 +146,14 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 
 // Remove client from connections and broadcast user left event
 func (srv *WSServer) userDisconnected(connection *ws.Connection) {
-	connections := srv.getCurrentConnections()
+	connections := srv.currentConnections()
 
 	for _, v := range connections {
-		if v != connection {
+		if v.Metadata.Username != connection.Metadata.Username {
 			continue
 		}
 
-		srv.removeConnection(v.Metadata.Username)
+		srv.removeConnection(clientId(v.Metadata.Username))
 
 		// Broadcast user left event to other clients
 		leftMsg := ws.WSMessage{
@@ -165,7 +163,7 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
 		}
 		leftJsonMsg := leftMsg.Marshal()
-		for _, c := range srv.getCurrentConnections() {
+		for _, c := range srv.currentConnections() {
 			if err := c.WriteMessage(string(leftJsonMsg), websocket.TextMessage); err != nil {
 				log.Printf("Error trying to inform clients that user left: %s\n", err.Error())
 			}
@@ -176,7 +174,7 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 }
 
 func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
-	connections := srv.getCurrentConnections()
+	connections := srv.currentConnections()
 	users := make([]ws.WSMetadata, 0, len(connections))
 
 	for _, c := range connections {
@@ -203,7 +201,7 @@ func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
 }
 
 func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
-	connections := srv.getCurrentConnections()
+	connections := srv.currentConnections()
 
 	msg := ws.WSMessage{
 		Type:     ws.UserEntered,
@@ -220,7 +218,7 @@ func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
 }
 
 func (srv *WSServer) fanOutUserMessage(client *ws.Connection, decryptedMessage []byte) {
-	connections := srv.getCurrentConnections()
+	connections := srv.currentConnections()
 
 	for _, c := range connections {
 		if string(c.Keys.Public) == string(client.Keys.Public) {
