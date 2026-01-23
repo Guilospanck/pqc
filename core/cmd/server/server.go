@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"pqc/pkg/cryptography"
 	"pqc/pkg/ws"
 
 	"github.com/gorilla/websocket"
@@ -39,6 +38,8 @@ var upgrader = websocket.Upgrader{
 }
 
 func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
+	connection := ws.NewEmptyConnection()
+
 	// If a client is reconnecting,
 	// then it will send what was its last known name and color.
 	// Also their keys, for that matter.
@@ -49,6 +50,9 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		username = GetRandomName()
 		color = GetRandomColor()
 	}
+
+	connection.Metadata.Username = username
+	connection.Metadata.Color = color
 
 	// Send the generated username and color to the WSClient
 	// INFO: it needs to be *before* the upgrade
@@ -64,9 +68,9 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	log.Printf("New connection: %s - %s\n", username, color)
+	connection.Conn = conn
 
-	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}, WriteMessageReq: make(chan ws.WriteMessageRequest, 10), WriteLoopReady: make(chan struct{}, 1)}
+	log.Printf("New connection: %s - %s\n", username, color)
 
 	// Start write loop
 	go connection.WriteLoop(srv.ctx)

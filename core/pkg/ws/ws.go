@@ -70,12 +70,26 @@ type Connection struct {
 	WriteMessageReq chan WriteMessageRequest
 
 	WriteLoopReady chan struct{}
-	done           chan struct{}
+	Done           chan struct{}
+}
+
+func NewEmptyConnection() Connection {
+	return Connection{
+		Keys:     cryptography.Keys{},
+		Conn:     nil,
+		Metadata: WSMetadata{},
+
+		WriteMessageReq: make(chan WriteMessageRequest, 10),
+		WriteLoopReady:  make(chan struct{}),
+		Done:            make(chan struct{}),
+	}
 }
 
 func (ws *Connection) WriteLoop(ctx context.Context) {
+	log.Println("Starting WRITE loop...")
+
 	close(ws.WriteLoopReady)
-	defer close(ws.done)
+	defer close(ws.Done)
 
 	for {
 		select {
@@ -89,17 +103,17 @@ func (ws *Connection) WriteLoop(ctx context.Context) {
 			select {
 			case msg.err <- err:
 			case <-ctx.Done():
-				log.Println("Context cancelled. Returning from write loop.")
+				log.Println("Context cancelled while selecting the write message result. Returning from WRITE loop.")
 				return
 			}
 
 			if err != nil {
-				log.Println("Error while writing message. Returning from write loop")
+				log.Println("Error while writing message. Returning from WRITE loop")
 				return
 			}
 
 		case <-ctx.Done():
-			log.Println("Context cancelled. Returning from write loop.")
+			log.Println("Context cancelled. Returning from WRITE loop.")
 			return
 		}
 	}
@@ -119,14 +133,14 @@ func (ws *Connection) WriteMessage(text string, msgType int) error {
 
 	select {
 	case ws.WriteMessageReq <- req:
-	case <-ws.done:
+	case <-ws.Done:
 		return errors.New("connection closed")
 	}
 
 	select {
 	case err := <-errCh:
 		return err
-	case <-ws.done:
+	case <-ws.Done:
 		return errors.New("connection closed")
 	}
 

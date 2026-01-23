@@ -38,10 +38,7 @@ type WSClient struct {
 
 func NewClient(ctx context.Context, cancel context.CancelFunc) *WSClient {
 	return &WSClient{
-		conn: ws.Connection{
-			WriteMessageReq: make(chan ws.WriteMessageRequest, 10),
-			WriteLoopReady:  make(chan struct{}, 1),
-		},
+		conn:       ws.NewEmptyConnection(),
 		reconnect:  make(chan struct{}, 1),
 		ctx:        ctx,
 		cancelFunc: cancel,
@@ -53,6 +50,7 @@ func (client *WSClient) connectionManager() {
 		<-client.reconnect
 
 		// Cancel all goroutines
+		log.Printf("[%s] Cancelling context\n", client.conn.Metadata.Username)
 		client.cancelFunc()
 
 		client.userDisconnected()
@@ -96,6 +94,7 @@ func (client *WSClient) connectToWSServer() error {
 		return err
 	}
 	client.conn.Conn = conn
+	log.Println("Dialing to WS server completed successfully!")
 
 	client.attempts.Store(1)
 
@@ -163,6 +162,8 @@ func (client *WSClient) exchangeKeys() error {
 }
 
 func (client *WSClient) readAndHandleServerMessages() {
+	log.Println("Starting READ loop...")
+
 	for {
 		client.conn.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
 
@@ -182,6 +183,7 @@ func (client *WSClient) readAndHandleServerMessages() {
 
 		select {
 		case <-client.ctx.Done():
+			log.Printf("[%s] Context cancelled. Returning from READ loop.\n", client.conn.Metadata.Username)
 			return
 		default:
 		}
@@ -239,7 +241,7 @@ func (client *WSClient) sendEncrypted(message string) {
 }
 
 func (client *WSClient) closeAndDisconnect() {
-	log.Print("Closing connection.")
+	log.Println("Closing connection.")
 	if client.conn.Conn != nil {
 		client.conn.Conn.Close()
 	}
@@ -248,6 +250,7 @@ func (client *WSClient) closeAndDisconnect() {
 }
 
 func (client *WSClient) pingRoutine() {
+	log.Println("Starting PING routine...")
 	// set pong handler (server will respond to our ping with a pong)
 	// gorilla ws server automatically responds to pings
 	client.conn.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
@@ -273,7 +276,7 @@ func (client *WSClient) pingRoutine() {
 			}
 
 		case <-client.ctx.Done():
-			log.Printf("[%s] ping routine stopped (context cancelled)\n",
+			log.Printf("[%s] PING routine stopped (context cancelled)\n",
 				client.conn.Metadata.Username)
 			return
 		}

@@ -13,8 +13,9 @@ import (
 func main() {
 	logger.CreateMultiWriterLogger("ws-client-pqc")
 
-	ctx, cancel := context.WithCancel(context.Background())
+	defer log.Println("> Client is gone!")
 
+	ctx, cancel := context.WithCancel(context.Background())
 	wsClient := NewClient(ctx, cancel)
 
 	// Start connection manager that will handle things like `reconnect`
@@ -31,13 +32,11 @@ func main() {
 
 		switch msg.Type {
 		case "connect":
-			log.Print("Trying to connect")
 			wsClient.connectToWSServer()
+			log.Println("Connected to server!")
 
 		case "send":
-			log.Print("Sending: ", msg.Value)
 			wsClient.sendEncrypted(msg.Value)
 		}
 	}
-
 }
