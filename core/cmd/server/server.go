@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"pqc/pkg/ws"
+	"slices"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -15,15 +16,17 @@ import (
 type clientId string
 
 type WSServer struct {
-	connections map[clientId]*ws.Connection
-	mu          sync.RWMutex
-	ctx         context.Context
+	connections   map[clientId]*ws.Connection
+	usedUsernames []string
+	mu            sync.RWMutex
+	ctx           context.Context
 }
 
 func NewServer(ctx context.Context) *WSServer {
 	return &WSServer{
-		connections: make(map[clientId]*ws.Connection),
-		ctx:         ctx,
+		connections:   make(map[clientId]*ws.Connection),
+		ctx:           ctx,
+		usedUsernames: make([]string, 0),
 	}
 }
 
@@ -54,6 +57,20 @@ func (srv *WSServer) currentConnections() []ws.Connection {
 	return connections
 }
 
+func (srv *WSServer) getRandomUsername() string {
+	generatedUsername := ""
+
+	for {
+		generatedUsername = GetRandomName()
+		if !slices.Contains(srv.usedUsernames, generatedUsername) {
+			break
+		}
+	}
+
+	srv.usedUsernames = append(srv.usedUsernames, generatedUsername)
+	return generatedUsername
+}
+
 func (srv *WSServer) startServer() {
 	http.HandleFunc("/ws", srv.wsHandler)
 
@@ -78,7 +95,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	username := headers.Get("username")
 	color := headers.Get("color")
 	if username == "" || color == "" {
-		username = GetRandomName()
+		username = srv.getRandomUsername()
 		color = GetRandomColor()
 	}
 

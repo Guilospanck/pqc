@@ -50,8 +50,6 @@ export function addConnectedUser(user: ConnectedUser): void {
   State.connectedUsers.set(key(user), user);
 }
 
-// FIXME: this can be a problem if the server generates the same username
-// for more than one user.
 export function removeConnectedUser(user: ConnectedUser): void {
   if (user.username === State.username) return;
 
