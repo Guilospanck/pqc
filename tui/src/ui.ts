@@ -12,10 +12,6 @@ let inputBar: TextRenderable | null = null;
 let statusText: TextRenderable | null = null;
 let currentUserText: TextRenderable | null = null;
 
-// TODO: show a "connected to server" status somewhere.
-// maybe the bullet color of the username becomes green or
-// red depending on that
-
 // TODO: make it auto-scrollable
 export function updateMessageArea(): void {
   if (!messageArea) return;
@@ -174,7 +170,7 @@ export function updateUsersPanel(): void {
   );
   userNodes.push(TextNodeRenderable.fromString("\n\n"));
 
-  if (State.connectedUsers.length === 0) {
+  if (State.connectedUsers.size === 0) {
     userNodes.push(
       TextNodeRenderable.fromString("No users connected", {
         fg: "#8b949e",

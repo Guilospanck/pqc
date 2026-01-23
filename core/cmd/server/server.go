@@ -7,20 +7,52 @@ import (
 	"log"
 	"net/http"
 	"pqc/pkg/ws"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
+type clientId string
+
 type WSServer struct {
-	connections []*ws.Connection
+	connections map[clientId]*ws.Connection
+	mu          sync.RWMutex
 	ctx         context.Context
 }
 
 func NewServer(ctx context.Context) *WSServer {
 	return &WSServer{
-		connections: nil,
+		connections: make(map[clientId]*ws.Connection),
 		ctx:         ctx,
 	}
+}
+
+func (srv *WSServer) addConnection(connection *ws.Connection) {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
+	srv.connections[clientId(connection.Metadata.Username)] = connection
+}
+
+func (srv *WSServer) removeConnection(username string) {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
+	delete(srv.connections, clientId(username))
+}
+
+func (srv *WSServer) getCurrentConnections() []*ws.Connection {
+	srv.mu.RLock()
+	defer srv.mu.RUnlock()
+
+	connections := make([]*ws.Connection, 0, len(srv.connections))
+
+	for _, c := range srv.connections {
+
+		connections = append(connections, c)
+	}
+
+	return connections
 }
 
 func (srv *WSServer) startServer() {
@@ -78,12 +110,12 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	<-connection.WriteLoopReady
 
 	// Update this newly connected user with info regarding all connected users
-	srv.informNewUserOfAllCurrentUsers(&connection)
+	srv.informUserOfAllCurrentUsers(&connection)
 
 	// Send to other clients the event of a newly connected client
 	srv.fanOutUserEnteredChat(username, color)
 
-	srv.connections = append(srv.connections, &connection)
+	srv.addConnection(&connection)
 
 	// Start read loop
 	srv.readAndHandleClientMessages(&connection)
@@ -116,12 +148,14 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 
 // Remove client from connections and broadcast user left event
 func (srv *WSServer) userDisconnected(connection *ws.Connection) {
-	for i, v := range srv.connections {
+	connections := srv.getCurrentConnections()
+
+	for _, v := range connections {
 		if v != connection {
 			continue
 		}
 
-		srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
+		srv.removeConnection(v.Metadata.Username)
 
 		// Broadcast user left event to other clients
 		leftMsg := ws.WSMessage{
@@ -131,7 +165,7 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
 		}
 		leftJsonMsg := leftMsg.Marshal()
-		for _, c := range srv.connections {
+		for _, c := range srv.getCurrentConnections() {
 			if err := c.WriteMessage(string(leftJsonMsg), websocket.TextMessage); err != nil {
 				log.Printf("Error trying to inform clients that user left: %s\n", err.Error())
 			}
@@ -141,9 +175,11 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 	}
 }
 
-func (srv *WSServer) informNewUserOfAllCurrentUsers(newUser *ws.Connection) {
-	users := []ws.WSMetadata{}
-	for _, c := range srv.connections {
+func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
+	connections := srv.getCurrentConnections()
+	users := make([]ws.WSMetadata, 0, len(connections))
+
+	for _, c := range connections {
 		users = append(users, ws.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color})
 	}
 
@@ -167,6 +203,8 @@ func (srv *WSServer) informNewUserOfAllCurrentUsers(newUser *ws.Connection) {
 }
 
 func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
+	connections := srv.getCurrentConnections()
+
 	msg := ws.WSMessage{
 		Type:     ws.UserEntered,
 		Value:    nil,
@@ -174,7 +212,7 @@ func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
 		Metadata: ws.WSMetadata{Username: username, Color: color},
 	}
 	jsonMsg := msg.Marshal()
-	for _, c := range srv.connections {
+	for _, c := range connections {
 		if err := c.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 			log.Printf("Error trying to inform the client %s that a new connection was made: %s\n", c.Metadata.Username, err.Error())
 		}
@@ -182,7 +220,9 @@ func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
 }
 
 func (srv *WSServer) fanOutUserMessage(client *ws.Connection, decryptedMessage []byte) {
-	for _, c := range srv.connections {
+	connections := srv.getCurrentConnections()
+
+	for _, c := range connections {
 		if string(c.Keys.Public) == string(client.Keys.Public) {
 			continue
 		}
