@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"pqc/pkg/ws"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -27,44 +29,60 @@ var QUIT_COMMANDS = []string{"/quit", "/q", "/exit", ":wq", ":q", ":wqa"}
 const MAX_ATTEMPTS int = 5
 
 type WSClient struct {
-	conn      ws.Connection
-	reconnect chan struct{}
+	conn       ws.Connection
+	reconnect  chan struct{}
+	attempts   atomic.Int64
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+}
+
+func NewClient() *WSClient {
+	return &WSClient{
+		conn:      ws.NewEmptyConnection(),
+		reconnect: make(chan struct{}, 1),
+	}
 }
 
 func (client *WSClient) connectionManager() {
-	client.reconnect = make(chan struct{}, 1)
-	client.conn = ws.Connection{}
+	for {
+		<-client.reconnect
 
-	go func() {
-		attempts := 0
-		for {
-			<-client.reconnect
+		// Cancel all goroutines
+		log.Printf("[%s] Cancelling context\n", client.conn.Metadata.Username)
+		client.cancelFunc()
 
-			if attempts >= MAX_ATTEMPTS {
-				log.Println("We burned through all attempts.")
-				client.closeAndDisconnect()
-				return
-			}
+		client.userDisconnected()
 
-			// exponential backoff
-			wait := time.Duration(1<<attempts) * time.Second
-			time.Sleep(wait)
+		attempts := client.attempts.Load()
 
-			log.Printf("Attempt #%d/5 to reconnect to server\n", attempts)
-			attempts++
-
-			// We try to connect to the WS server again. If it doesn't work,
-			// we trigger another reconnect
-			if err := client.connectToWSServer(); err != nil {
-				client.triggerReconnect()
-			}
+		if attempts >= int64(MAX_ATTEMPTS) {
+			log.Println("We burned through all attempts.")
+			client.closeAndDisconnect()
+			return
 		}
-	}()
+
+		// exponential backoff
+		wait := time.Duration(1<<attempts) * time.Second
+		time.Sleep(wait)
+
+		log.Printf("Attempt #%d/5 to reconnect to server\n", attempts)
+		client.attempts.Add(1)
+
+		// We try to connect to the WS server again. If it doesn't work,
+		// we trigger another reconnect
+		if err := client.connectToWSServer(); err != nil {
+			client.triggerReconnect()
+		}
+	}
 }
 
 func (client *WSClient) connectToWSServer() error {
 	url := "ws://localhost:8080/ws"
 	log.Printf("Connecting to %s\n", url)
+
+	// Reset connection channels because
+	// we might have closed them on reconnection.
+	client.conn.ResetChannels()
 
 	requestHeader := http.Header{}
 	if client.conn.Metadata.Color != "" || client.conn.Metadata.Username != "" {
@@ -78,6 +96,25 @@ func (client *WSClient) connectToWSServer() error {
 		return err
 	}
 	client.conn.Conn = conn
+	log.Println("Dialing to WS server completed successfully!")
+
+	client.attempts.Store(1)
+
+	// Start a new context
+	ctx, cancel := context.WithCancel(context.Background())
+	client.ctx = ctx
+	client.cancelFunc = cancel
+
+	// Start write loop
+	go client.conn.WriteLoop(client.ctx)
+
+	<-client.conn.WriteLoopReady
+
+	// Start ping routine
+	go client.pingRoutine()
+
+	// Start the read loop
+	go client.readAndHandleServerMessages()
 
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
@@ -99,19 +136,13 @@ func (client *WSClient) connectToWSServer() error {
 		return nil
 	}
 
-	// Start ping routine
-	go client.pingRoutine()
-
-	// Read the messages from server
-	go client.readAndHandleServerMessages()
-
 	return nil
 }
 
 func (client *WSClient) generateKeys() error {
 	keys, err := cryptography.GenerateKeys()
 	if err != nil {
-		log.Printf("Error generating keys: %s\n", err.Error())
+		log.Printf("[%s] Error generating keys: %s\n", client.conn.Metadata.Username, err.Error())
 		return err
 	}
 	client.conn.Keys = keys
@@ -129,8 +160,8 @@ func (client *WSClient) exchangeKeys() error {
 	jsonMsg := msg.Marshal()
 
 	// Send public key so we can exchange keys
-	if err := client.conn.WriteMessage(string(jsonMsg)); err != nil {
-		log.Printf("Error trying to send public key to server: %s\n", err.Error())
+	if err := client.conn.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
+		log.Printf("[%s] Error trying to send public key to server: %s\n", client.conn.Metadata.Username, err.Error())
 		return err
 	}
 
@@ -138,29 +169,39 @@ func (client *WSClient) exchangeKeys() error {
 }
 
 func (client *WSClient) readAndHandleServerMessages() {
+	log.Println("Starting READ loop...")
+
 	for {
+		client.conn.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
+
 		msg, err := client.conn.ReadMessage()
 		if err != nil {
-			log.Printf("Error reading from conn: %s\n", err.Error())
+			log.Printf("[%s] Error reading from conn: %s\n", client.conn.Metadata.Username, err.Error())
 			client.triggerReconnect()
 			return
 		}
 
 		msgJson, err := ws.UnmarshalWSMessage(msg)
 		if err != nil {
-			log.Printf("Error unmarshalling message: %s\n", err.Error())
+			log.Printf("[%s] Error unmarshalling message: %s\n", client.conn.Metadata.Username, err.Error())
 			continue
 		}
 		client.conn.HandleServerMessage(msgJson)
-	}
 
+		select {
+		case <-client.ctx.Done():
+			log.Printf("[%s] Context cancelled. Returning from READ loop.\n", client.conn.Metadata.Username)
+			return
+		default:
+		}
+	}
 }
 
 func (client *WSClient) triggerReconnect() {
 	// If reconnect was already triggered, it won't trigger again
 	select {
 	case client.reconnect <- struct{}{}:
-		log.Println("Triggering reconnect...")
+		log.Printf("[%s] Triggering reconnect...", client.conn.Metadata.Username)
 	default:
 	}
 }
@@ -199,7 +240,7 @@ func (client *WSClient) sendEncrypted(message string) {
 	jsonMsg := msg.Marshal()
 
 	// Send encrypted message
-	if err := client.conn.WriteMessage(string(jsonMsg)); err != nil {
+	if err := client.conn.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Printf("Error writing message to server: %s\n", err.Error())
 		// TODO: save the message somewhere and then retry it after connection
 		client.triggerReconnect()
@@ -207,7 +248,7 @@ func (client *WSClient) sendEncrypted(message string) {
 }
 
 func (client *WSClient) closeAndDisconnect() {
-	log.Print("Closing connection.")
+	log.Println("Closing connection.")
 	if client.conn.Conn != nil {
 		client.conn.Conn.Close()
 	}
@@ -216,6 +257,7 @@ func (client *WSClient) closeAndDisconnect() {
 }
 
 func (client *WSClient) pingRoutine() {
+	log.Println("Starting PING routine...")
 	// set pong handler (server will respond to our ping with a pong)
 	// gorilla ws server automatically responds to pings
 	client.conn.Conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
@@ -229,15 +271,29 @@ func (client *WSClient) pingRoutine() {
 	defer ticker.Stop()
 
 	for {
-		<-ticker.C
+		select {
+		case <-ticker.C:
+			log.Printf("[%s] pinging server...\n", client.conn.Metadata.Username)
 
-		log.Printf("Client %s is pinging server...\n", client.conn.Metadata.Username)
+			client.conn.Conn.SetWriteDeadline(time.Now().Add(WRITE_WAIT))
+			if err := client.conn.WriteMessage("", websocket.PingMessage); err != nil {
+				log.Printf("[%s] ping error: %s\n", client.conn.Metadata.Username, err)
+				client.triggerReconnect()
+				return
+			}
 
-		client.conn.Conn.SetWriteDeadline(time.Now().Add(WRITE_WAIT))
-		if err := client.conn.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-			log.Println("ping error:", err)
-			client.triggerReconnect()
+		case <-client.ctx.Done():
+			log.Printf("[%s] PING routine stopped (context cancelled)\n",
+				client.conn.Metadata.Username)
 			return
 		}
 	}
+}
+
+// Inform TUI that user is disconnected
+func (client *WSClient) userDisconnected() {
+	connection := client.conn
+
+	metadata := connection.Metadata
+	ui.EmitToUI(ui.ToUIDisconnected, string(metadata.Username), metadata.Color)
 }

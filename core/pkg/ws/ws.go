@@ -1,7 +1,9 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"pqc/pkg/cryptography"
@@ -55,31 +57,104 @@ func UnmarshalWSMessage(data []byte) (WSMessage, error) {
 	return msg, nil
 }
 
-type Connection struct {
-	Keys     cryptography.Keys
-	Conn     *websocket.Conn
-	Metadata WSMetadata
+type WriteMessageRequest struct {
+	msgType int // websocket.TextMessage, websocket.PingMessage
+	text    []byte
+	err     chan error
 }
 
-// FIXME: we will have to have some kind of lock here.
-// It panics if more than one goroutine tries to write the message
-func (ws *Connection) WriteMessage(text string) error {
-	err := ws.Conn.WriteMessage(websocket.TextMessage, []byte(text))
-	if err != nil {
-		log.Println("Write error:", err)
-		return err
+type Connection struct {
+	Keys            cryptography.Keys
+	Conn            *websocket.Conn
+	Metadata        WSMetadata
+	WriteMessageReq chan WriteMessageRequest
+
+	WriteLoopReady chan struct{}
+	Done           chan struct{}
+}
+
+func NewEmptyConnection() Connection {
+	return Connection{
+		Keys:     cryptography.Keys{},
+		Conn:     nil,
+		Metadata: WSMetadata{},
+
+		WriteMessageReq: make(chan WriteMessageRequest, 10),
+		WriteLoopReady:  make(chan struct{}),
+		Done:            make(chan struct{}),
+	}
+}
+
+func (ws *Connection) ResetChannels() {
+	ws.WriteMessageReq = make(chan WriteMessageRequest, 10)
+	ws.WriteLoopReady = make(chan struct{})
+	ws.Done = make(chan struct{})
+}
+
+func (ws *Connection) WriteLoop(ctx context.Context) {
+	log.Println("Starting WRITE loop...")
+
+	close(ws.WriteLoopReady)
+	defer close(ws.Done)
+
+	for {
+		select {
+		case msg := <-ws.WriteMessageReq:
+
+			text := msg.text
+			msgType := msg.msgType
+
+			err := ws.Conn.WriteMessage(msgType, text)
+
+			select {
+			case msg.err <- err:
+			case <-ctx.Done():
+				log.Println("Context cancelled while selecting the write message result. Returning from WRITE loop.")
+				return
+			}
+
+			if err != nil {
+				log.Println("Error while writing message. Returning from WRITE loop")
+				return
+			}
+
+		case <-ctx.Done():
+			log.Println("Context cancelled. Returning from WRITE loop.")
+			return
+		}
+	}
+}
+
+// Understanding the channels/select here:
+// 1. Can I hand the letter to the courier?
+// 2. Will the courier ever reply?
+func (ws *Connection) WriteMessage(text string, msgType int) error {
+	errCh := make(chan error, 1)
+
+	req := WriteMessageRequest{
+		msgType: msgType,
+		text:    []byte(text),
+		err:     errCh,
 	}
 
-	return nil
+	select {
+	case ws.WriteMessageReq <- req:
+	case <-ws.Done:
+		return errors.New("connection closed")
+	}
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ws.Done:
+		return errors.New("connection closed")
+	}
+
 }
 
 func (ws *Connection) ReadMessage() ([]byte, error) {
 	_, msg, err := ws.Conn.ReadMessage()
-	if err != nil {
-		return []byte(""), err
-	}
-
-	return msg, nil
+	return msg, err
 }
 
 // To be handled by the server
@@ -103,7 +178,7 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 		jsonMsg := msg.Marshal()
 
 		// send ciphertext to client so we can exchange keys
-		if err := connection.WriteMessage(string(jsonMsg)); err != nil {
+		if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 			log.Printf("Could not send message to client: %s\n", err.Error())
 			return nil
 		}
@@ -146,7 +221,7 @@ func (connection *Connection) RelayMessage(message, fromUsername, fromColor stri
 	jsonMsg := msg.Marshal()
 
 	// send encrypted message
-	if err := connection.WriteMessage(string(jsonMsg)); err != nil {
+	if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Printf("Could not send message to client: %s\n", err.Error())
 	}
 

@@ -9,6 +9,7 @@ type UIMessageType string
 
 const (
 	ToUIConnected       UIMessageType = "connected"
+	ToUIDisconnected    UIMessageType = "disconnected"
 	ToUIKeysExchanged   UIMessageType = "keys_exchanged"
 	ToUIMessage         UIMessageType = "message"
 	ToUIUserEnteredChat UIMessageType = "user_entered_chat"

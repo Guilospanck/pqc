@@ -9,6 +9,7 @@ import { EventHandler } from "./singletons/event-handler";
 import {
   addConnectedUser,
   addMultipleConnectedUsers,
+  ClearState,
   removeConnectedUser,
   State,
 } from "./singletons/state";
@@ -53,6 +54,7 @@ export function setupGo(): void {
         case "connected": {
           State.username = message.value;
           State.userColor = message.color;
+          State.isConnected = true;
 
           addMessage({
             ...tuiMessage,
@@ -60,7 +62,21 @@ export function setupGo(): void {
           });
 
           EventHandler().notify("update_current_user_text", {});
+          EventHandler().notify("update_users_panel", {});
+          break;
+        }
+        case "disconnected": {
+          ClearState();
+          State.username = message.value;
+          State.userColor = message.color;
 
+          addMessage({
+            ...tuiMessage,
+            text: "Disconnected from server.",
+          });
+
+          EventHandler().notify("update_current_user_text", {});
+          EventHandler().notify("update_users_panel", {});
           break;
         }
         case "keys_exchanged": {
@@ -78,12 +94,15 @@ export function setupGo(): void {
           break;
         }
         case "user_entered_chat": {
-          addConnectedUser(message.value, message.color);
+          addConnectedUser({ username: message.value, color: message.color });
           EventHandler().notify("update_users_panel", {});
           break;
         }
         case "user_left_chat": {
-          removeConnectedUser(message.value);
+          removeConnectedUser({
+            username: message.value,
+            color: message.color,
+          });
           EventHandler().notify("update_users_panel", {});
           break;
         }

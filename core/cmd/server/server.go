@@ -1,18 +1,75 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"pqc/pkg/cryptography"
 	"pqc/pkg/ws"
+	"slices"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
+type clientId string
+
 type WSServer struct {
-	connections []*ws.Connection
+	// TODO: create concept of rooms
+	connections   map[clientId]*ws.Connection
+	usedUsernames []string
+	mu            sync.RWMutex
+	ctx           context.Context
+}
+
+func NewServer(ctx context.Context) *WSServer {
+	return &WSServer{
+		connections:   make(map[clientId]*ws.Connection),
+		ctx:           ctx,
+		usedUsernames: make([]string, 0),
+	}
+}
+
+func (srv *WSServer) addConnection(connection *ws.Connection) {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
+	srv.connections[clientId(connection.Metadata.Username)] = connection
+}
+
+func (srv *WSServer) removeConnection(id clientId) {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
+	delete(srv.connections, id)
+}
+
+func (srv *WSServer) currentConnections() []ws.Connection {
+	srv.mu.RLock()
+	defer srv.mu.RUnlock()
+
+	connections := make([]ws.Connection, 0, len(srv.connections))
+
+	for _, c := range srv.connections {
+		connections = append(connections, *c)
+	}
+
+	return connections
+}
+
+func (srv *WSServer) getRandomUsername() string {
+	generatedUsername := ""
+
+	for {
+		generatedUsername = GetRandomName()
+		if !slices.Contains(srv.usedUsernames, generatedUsername) {
+			break
+		}
+	}
+
+	srv.usedUsernames = append(srv.usedUsernames, generatedUsername)
+	return generatedUsername
 }
 
 func (srv *WSServer) startServer() {
@@ -30,6 +87,8 @@ var upgrader = websocket.Upgrader{
 }
 
 func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
+	connection := ws.NewEmptyConnection()
+
 	// If a client is reconnecting,
 	// then it will send what was its last known name and color.
 	// Also their keys, for that matter.
@@ -37,9 +96,12 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	username := headers.Get("username")
 	color := headers.Get("color")
 	if username == "" || color == "" {
-		username = GetRandomName()
+		username = srv.getRandomUsername()
 		color = GetRandomColor()
 	}
+
+	connection.Metadata.Username = username
+	connection.Metadata.Color = color
 
 	// Send the generated username and color to the WSClient
 	// INFO: it needs to be *before* the upgrade
@@ -55,23 +117,32 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
+	connection.Conn = conn
+	srv.addConnection(&connection)
+
 	log.Printf("New connection: %s - %s\n", username, color)
 
-	connection := ws.Connection{Keys: cryptography.Keys{}, Conn: conn, Metadata: ws.WSMetadata{Username: username, Color: color}}
+	// Start write loop
+	go connection.WriteLoop(srv.ctx)
+
+	<-connection.WriteLoopReady
 
 	// Update this newly connected user with info regarding all connected users
-	srv.informNewUserOfAllCurrentUsers(&connection)
+	srv.informUserOfAllCurrentUsers(&connection)
 
 	// Send to other clients the event of a newly connected client
 	srv.fanOutUserEnteredChat(username, color)
 
-	srv.connections = append(srv.connections, &connection)
+	// Start read loop
+	srv.readAndHandleClientMessages(&connection)
+}
 
+func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 	for {
 		msg, err := connection.ReadMessage()
 		if err != nil {
 			log.Printf("Error reading from conn: %s\n", err.Error())
-			srv.userDisconnected(&connection)
+			srv.userDisconnected(connection)
 			return
 		}
 
@@ -88,18 +159,19 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		srv.fanOutUserMessage(connection, decryptedMessageSent)
-
 	}
 }
 
 // Remove client from connections and broadcast user left event
 func (srv *WSServer) userDisconnected(connection *ws.Connection) {
-	for i, v := range srv.connections {
-		if v != connection {
+	connections := srv.currentConnections()
+
+	for _, v := range connections {
+		if v.Metadata.Username != connection.Metadata.Username {
 			continue
 		}
 
-		srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
+		srv.removeConnection(clientId(v.Metadata.Username))
 
 		// Broadcast user left event to other clients
 		leftMsg := ws.WSMessage{
@@ -109,8 +181,8 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
 		}
 		leftJsonMsg := leftMsg.Marshal()
-		for _, c := range srv.connections {
-			if err := c.WriteMessage(string(leftJsonMsg)); err != nil {
+		for _, c := range srv.currentConnections() {
+			if err := c.WriteMessage(string(leftJsonMsg), websocket.TextMessage); err != nil {
 				log.Printf("Error trying to inform clients that user left: %s\n", err.Error())
 			}
 		}
@@ -119,9 +191,11 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 	}
 }
 
-func (srv *WSServer) informNewUserOfAllCurrentUsers(newUser *ws.Connection) {
-	users := []ws.WSMetadata{}
-	for _, c := range srv.connections {
+func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
+	connections := srv.currentConnections()
+	users := make([]ws.WSMetadata, 0, len(connections))
+
+	for _, c := range connections {
 		users = append(users, ws.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color})
 	}
 
@@ -139,12 +213,14 @@ func (srv *WSServer) informNewUserOfAllCurrentUsers(newUser *ws.Connection) {
 	}
 	jsonMsg := msg.Marshal()
 
-	if err = newUser.WriteMessage(string(jsonMsg)); err != nil {
+	if err = newUser.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Println("Problem sending message to the client regarding the currently connected users")
 	}
 }
 
 func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
+	connections := srv.currentConnections()
+
 	msg := ws.WSMessage{
 		Type:     ws.UserEntered,
 		Value:    nil,
@@ -152,15 +228,17 @@ func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
 		Metadata: ws.WSMetadata{Username: username, Color: color},
 	}
 	jsonMsg := msg.Marshal()
-	for _, c := range srv.connections {
-		if err := c.WriteMessage(string(jsonMsg)); err != nil {
+	for _, c := range connections {
+		if err := c.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 			log.Printf("Error trying to inform the client %s that a new connection was made: %s\n", c.Metadata.Username, err.Error())
 		}
 	}
 }
 
-func (srv *WSServer) fanOutUserMessage(client ws.Connection, decryptedMessage []byte) {
-	for _, c := range srv.connections {
+func (srv *WSServer) fanOutUserMessage(client *ws.Connection, decryptedMessage []byte) {
+	connections := srv.currentConnections()
+
+	for _, c := range connections {
 		if string(c.Keys.Public) == string(client.Keys.Public) {
 			continue
 		}

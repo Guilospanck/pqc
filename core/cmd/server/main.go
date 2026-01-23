@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"pqc/pkg/logger"
 )
 
 func main() {
 	logger.CreateMultiWriterLogger("ws-server-pqc")
-	server := WSServer{connections: nil}
+
+	ctx := context.Background()
+
+	server := NewServer(ctx)
 	server.startServer()
 }
