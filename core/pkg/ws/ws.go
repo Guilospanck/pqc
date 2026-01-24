@@ -64,13 +64,16 @@ type WriteMessageRequest struct {
 }
 
 type Connection struct {
-	Keys            cryptography.Keys
-	Conn            *websocket.Conn
-	Metadata        WSMetadata
+	Keys     cryptography.Keys
+	Conn     *websocket.Conn
+	Metadata WSMetadata
+
 	WriteMessageReq chan WriteMessageRequest
 
-	WriteLoopReady chan struct{}
-	Done           chan struct{}
+	WriteLoopReady  chan struct{}
+	WriteLoopClosed chan struct{}
+
+	KeysExchanged chan struct{}
 }
 
 func NewEmptyConnection() Connection {
@@ -80,22 +83,26 @@ func NewEmptyConnection() Connection {
 		Metadata: WSMetadata{},
 
 		WriteMessageReq: make(chan WriteMessageRequest, 10),
+
 		WriteLoopReady:  make(chan struct{}),
-		Done:            make(chan struct{}),
+		WriteLoopClosed: make(chan struct{}),
+
+		KeysExchanged: make(chan struct{}),
 	}
 }
 
 func (ws *Connection) ResetChannels() {
 	ws.WriteMessageReq = make(chan WriteMessageRequest, 10)
 	ws.WriteLoopReady = make(chan struct{})
-	ws.Done = make(chan struct{})
+	ws.WriteLoopClosed = make(chan struct{})
+	ws.KeysExchanged = make(chan struct{})
 }
 
 func (ws *Connection) WriteLoop(ctx context.Context) {
 	log.Println("Starting WRITE loop...")
 
 	close(ws.WriteLoopReady)
-	defer close(ws.Done)
+	defer close(ws.WriteLoopClosed)
 
 	for {
 		select {
@@ -139,14 +146,14 @@ func (ws *Connection) WriteMessage(text string, msgType int) error {
 
 	select {
 	case ws.WriteMessageReq <- req:
-	case <-ws.Done:
+	case <-ws.WriteLoopClosed:
 		return errors.New("connection closed")
 	}
 
 	select {
 	case err := <-errCh:
 		return err
-	case <-ws.Done:
+	case <-ws.WriteLoopClosed:
 		return errors.New("connection closed")
 	}
 }
@@ -240,6 +247,8 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
 		ui.EmitToUI(ui.ToUIKeysExchanged, connection.Metadata.Username, connection.Metadata.Color)
+
+		close(connection.KeysExchanged)
 
 	case EncryptedMessage:
 		nonce := msg.Nonce

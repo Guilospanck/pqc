@@ -29,19 +29,21 @@ var QUIT_COMMANDS = []string{"/quit", "/q", "/exit", ":wq", ":q", ":wqa"}
 const MAX_ATTEMPTS int = 5
 
 type WSClient struct {
-	conn        ws.Connection
-	reconnect   chan struct{}
-	attempts    atomic.Int64
-	ctx         context.Context
-	cancelFunc  context.CancelFunc
-	isConnected bool
+	conn            ws.Connection
+	reconnect       chan struct{}
+	attempts        atomic.Int64
+	ctx             context.Context
+	cancelFunc      context.CancelFunc
+	isConnected     bool
+	deadLetterQueue chan string // we save non-delivered non-encrypted messages here
 }
 
 func NewClient() *WSClient {
 	return &WSClient{
-		conn:        ws.NewEmptyConnection(),
-		reconnect:   make(chan struct{}, 1),
-		isConnected: false,
+		conn:            ws.NewEmptyConnection(),
+		reconnect:       make(chan struct{}, 1),
+		isConnected:     false,
+		deadLetterQueue: make(chan string, 10),
 	}
 }
 
@@ -140,7 +142,22 @@ func (client *WSClient) connectToWSServer() error {
 		return nil
 	}
 
+	<-client.conn.KeysExchanged
+
+	client.drainDLQ()
+
 	return nil
+}
+
+// If there are any messages in the client's dead-letter queue (DLQ),
+// we send them to the server.
+func (client *WSClient) drainDLQ() {
+	initial := len(client.deadLetterQueue)
+	for range initial {
+		msg := <-client.deadLetterQueue
+		log.Printf("[%s] Sending message from DLQ: %s", client.conn.Metadata.Username, msg)
+		client.sendEncrypted(msg)
+	}
 }
 
 func (client *WSClient) generateKeys() error {
@@ -211,10 +228,6 @@ func (client *WSClient) triggerReconnect() {
 }
 
 func (client *WSClient) sendEncrypted(message string) {
-	if !client.isConnected {
-		return
-	}
-
 	if client.conn.Keys.SharedSecret == nil {
 		log.Print("Shared secret not ready")
 		return
@@ -248,10 +261,15 @@ func (client *WSClient) sendEncrypted(message string) {
 	}
 	jsonMsg := msg.Marshal()
 
+	if !client.isConnected {
+		client.deadLetterQueue <- message
+		return
+	}
+
 	// Send encrypted message
 	if err := client.conn.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Printf("Error writing message to server: %s\n", err.Error())
-		// TODO: save the message somewhere and then retry it after connection
+		client.deadLetterQueue <- message
 		client.triggerReconnect()
 	}
 }
