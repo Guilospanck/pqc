@@ -66,7 +66,8 @@ export function setupGo(): void {
           break;
         }
         case "disconnected": {
-          ClearState();
+          State.isConnected = false;
+          State.connectedUsers = new Map();
           State.username = message.value;
           State.userColor = message.color;
 

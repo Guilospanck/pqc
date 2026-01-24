@@ -56,9 +56,11 @@ func (client *WSClient) connectionManager() {
 		log.Printf("[%s] Cancelling context\n", client.conn.Metadata.Username)
 		client.cancelFunc()
 
-		client.userDisconnected()
-
 		attempts := client.attempts.Load()
+
+		if attempts == int64(1) {
+			client.userDisconnected()
+		}
 
 		if attempts >= int64(MAX_ATTEMPTS) {
 			log.Println("We burned through all attempts.")
@@ -142,6 +144,7 @@ func (client *WSClient) connectToWSServer() error {
 		return nil
 	}
 
+	// Wait for the keys to be exchanged before proceeding.
 	<-client.conn.KeysExchanged
 
 	client.drainDLQ()
