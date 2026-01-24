@@ -29,23 +29,26 @@ var QUIT_COMMANDS = []string{"/quit", "/q", "/exit", ":wq", ":q", ":wqa"}
 const MAX_ATTEMPTS int = 5
 
 type WSClient struct {
-	conn       ws.Connection
-	reconnect  chan struct{}
-	attempts   atomic.Int64
-	ctx        context.Context
-	cancelFunc context.CancelFunc
+	conn        ws.Connection
+	reconnect   chan struct{}
+	attempts    atomic.Int64
+	ctx         context.Context
+	cancelFunc  context.CancelFunc
+	isConnected bool
 }
 
 func NewClient() *WSClient {
 	return &WSClient{
-		conn:      ws.NewEmptyConnection(),
-		reconnect: make(chan struct{}, 1),
+		conn:        ws.NewEmptyConnection(),
+		reconnect:   make(chan struct{}, 1),
+		isConnected: false,
 	}
 }
 
 func (client *WSClient) connectionManager() {
 	for {
 		<-client.reconnect
+		client.isConnected = false
 
 		// Cancel all goroutines
 		log.Printf("[%s] Cancelling context\n", client.conn.Metadata.Username)
@@ -96,6 +99,7 @@ func (client *WSClient) connectToWSServer() error {
 		return err
 	}
 	client.conn.Conn = conn
+	client.isConnected = true
 	log.Println("Dialing to WS server completed successfully!")
 
 	client.attempts.Store(1)
@@ -207,6 +211,10 @@ func (client *WSClient) triggerReconnect() {
 }
 
 func (client *WSClient) sendEncrypted(message string) {
+	if !client.isConnected {
+		return
+	}
+
 	if client.conn.Keys.SharedSecret == nil {
 		log.Print("Shared secret not ready")
 		return
@@ -220,6 +228,7 @@ func (client *WSClient) sendEncrypted(message string) {
 
 	// Quit command
 	if slices.Contains(QUIT_COMMANDS, text) {
+		log.Printf("[%s] Quit command received.\n", client.conn.Metadata.Username)
 		client.closeAndDisconnect()
 		return
 	}
@@ -248,7 +257,9 @@ func (client *WSClient) sendEncrypted(message string) {
 }
 
 func (client *WSClient) closeAndDisconnect() {
-	log.Println("Closing connection.")
+	log.Printf("[%s] Closing connection.", client.conn.Metadata.Username)
+
+	client.cancelFunc()
 	if client.conn.Conn != nil {
 		client.conn.Conn.Close()
 	}

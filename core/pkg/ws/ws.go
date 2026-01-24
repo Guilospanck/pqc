@@ -149,7 +149,6 @@ func (ws *Connection) WriteMessage(text string, msgType int) error {
 	case <-ws.Done:
 		return errors.New("connection closed")
 	}
-
 }
 
 func (ws *Connection) ReadMessage() ([]byte, error) {
