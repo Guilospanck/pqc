@@ -1,22 +1,26 @@
 import {
   BoxRenderable,
+  ScrollBoxRenderable,
   TextNodeRenderable,
   TextRenderable,
 } from "@opentui/core";
 import { ClearState, State } from "./singletons/state";
 import { COLORS } from "./constants";
 
-let messageArea: TextRenderable | null = null;
+let messageArea: ScrollBoxRenderable | null = null;
 let usersPanel: TextRenderable | null = null;
 let inputBar: TextRenderable | null = null;
 let statusText: TextRenderable | null = null;
 let currentUserText: TextRenderable | null = null;
 
-// TODO: make it auto-scrollable
 export function updateMessageArea(): void {
-  if (!messageArea) return;
+  if (!State.renderer || !messageArea) return;
 
-  messageArea.clear();
+  // Clear all existing children
+  const children = messageArea.getChildren();
+  children.forEach((child) => {
+    messageArea!.remove(child.id);
+  });
 
   const messageNodes: TextNodeRenderable[] = [];
 
@@ -53,7 +57,11 @@ export function updateMessageArea(): void {
   });
 
   const containerNode = TextNodeRenderable.fromNodes(messageNodes);
-  messageArea.add(containerNode);
+
+  // Create a TextRenderable to hold the content and add it to the scrollbox
+  const textContent = new TextRenderable(State.renderer, {});
+  textContent.add(containerNode);
+  messageArea.add(textContent);
 }
 
 export function setupUI(): void {
@@ -82,12 +90,12 @@ export function setupUI(): void {
   });
 
   // Create message area that takes up most of the screen height
-  messageArea = new TextRenderable(State.renderer, {
+  messageArea = new ScrollBoxRenderable(State.renderer, {
     id: "messageArea",
-    width: "100%",
-    height: "85%",
-    zIndex: 3,
-    fg: "#f0f6fc",
+    stickyScroll: true,
+    stickyStart: "bottom",
+    scrollY: true,
+    viewportCulling: true,
   });
   mainContentBox.add(messageArea);
 

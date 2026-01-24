@@ -9,7 +9,6 @@ import { EventHandler } from "./singletons/event-handler";
 import {
   addConnectedUser,
   addMultipleConnectedUsers,
-  ClearState,
   removeConnectedUser,
   State,
 } from "./singletons/state";
