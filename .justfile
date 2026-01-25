@@ -1,4 +1,4 @@
-start-server: build-server
+start-server: generate-ts-types build-server
   ./core/server
 
 start-client: build-client
@@ -12,4 +12,7 @@ build-client:
 
 build-server:
   cd core && go build ./cmd/server
+
+generate-ts-types:
+  cd core && tygo generate
 

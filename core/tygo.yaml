@@ -1,0 +1,4 @@
+packages:
+  - path: "github.com/Guilospanck/pqc/core/pkg/types"
+    output_path: "../tui/src/types/generated-types.ts"
+    enum_style: "union"

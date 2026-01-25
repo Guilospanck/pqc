@@ -5,13 +5,15 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"github.com/Guilospanck/pqc/core/pkg/cryptography"
-	"github.com/Guilospanck/pqc/core/pkg/ui"
-	"github.com/Guilospanck/pqc/core/pkg/ws"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/Guilospanck/pqc/core/pkg/cryptography"
+	"github.com/Guilospanck/pqc/core/pkg/types"
+	"github.com/Guilospanck/pqc/core/pkg/ui"
+	"github.com/Guilospanck/pqc/core/pkg/ws"
 
 	"github.com/gorilla/websocket"
 )
@@ -119,7 +121,7 @@ func (client *WSClient) connectToWSServer() error {
 	color := res.Header.Get("color")
 	client.conn.Metadata = ws.WSMetadata{Username: username, Color: color}
 	// Tell UI we're connected with some username and color
-	ui.EmitToUI(ui.ToUIConnected, username, color)
+	ui.EmitToUI(types.MessageTypeConnected, username, color)
 
 	if client.conn.Keys.Public == nil {
 		if err := client.generateKeys(); err != nil {
@@ -167,7 +169,7 @@ func (client *WSClient) generateKeys() error {
 
 func (client *WSClient) exchangeKeys() error {
 	msg := ws.WSMessage{
-		Type:     ws.ExchangeKeys,
+		Type:     types.MessageTypeExchangeKeys,
 		Value:    client.conn.Keys.Public,
 		Nonce:    nil,
 		Metadata: client.conn.Metadata,
@@ -248,7 +250,7 @@ func (client *WSClient) sendEncrypted(message string) {
 	}
 
 	msg := ws.WSMessage{
-		Type:     ws.EncryptedMessage,
+		Type:     types.MessageTypeEncryptedMessage,
 		Value:    ciphertext,
 		Nonce:    nonce,
 		Metadata: ws.WSMetadata{Username: client.conn.Metadata.Username, Color: client.conn.Metadata.Color},
@@ -318,5 +320,5 @@ func (client *WSClient) userDisconnected() {
 	connection := client.conn
 
 	metadata := connection.Metadata
-	ui.EmitToUI(ui.ToUIDisconnected, string(metadata.Username), metadata.Color)
+	ui.EmitToUI(types.MessageTypeDisconnected, string(metadata.Username), metadata.Color)
 }

@@ -4,29 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-)
 
-// Type of communications between WS client and WS server <-->
-type WSMessageType string
+	"github.com/Guilospanck/pqc/core/pkg/types"
+)
 
 type WSMetadata struct {
 	Username string `json:"username"`
 	Color    string `json:"color"`
 }
 
-const (
-	ExchangeKeys     WSMessageType = "exchange_keys"
-	EncryptedMessage WSMessageType = "encrypted_message"
-	UserEntered      WSMessageType = "user_entered_chat"
-	UserLeft         WSMessageType = "user_left_chat"
-	CurrentUsers     WSMessageType = "current_users"
-)
-
 type WSMessage struct {
-	Type     WSMessageType `json:"type"`
-	Value    []byte        `json:"value"`
-	Nonce    []byte        `json:"nonce"`
-	Metadata WSMetadata    `json:"metadata"`
+	Type     types.MessageType `json:"type"`
+	Value    []byte            `json:"value"`
+	Nonce    []byte            `json:"nonce"`
+	Metadata WSMetadata        `json:"metadata"`
 }
 
 // This function panics if marshalling goes wrong

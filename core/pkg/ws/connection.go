@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"log"
+
 	"github.com/Guilospanck/pqc/core/pkg/cryptography"
+	"github.com/Guilospanck/pqc/core/pkg/types"
 	"github.com/Guilospanck/pqc/core/pkg/ui"
 
 	"github.com/gorilla/websocket"
@@ -119,7 +121,7 @@ func (ws *Connection) ReadMessage() ([]byte, error) {
 // To be handled by the server
 func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 	switch msg.Type {
-	case ExchangeKeys:
+	case types.MessageTypeExchangeKeys:
 		// Encapsulate ciphertext with the public key from client
 		// and generates a sharedSecret
 		sharedSecret, cipherText := cryptography.KeyExchange(msg.Value)
@@ -129,7 +131,7 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 		connection.Keys.Public = msg.Value
 
 		msg := WSMessage{
-			Type:     ExchangeKeys,
+			Type:     types.MessageTypeExchangeKeys,
 			Value:    cipherText,
 			Nonce:    nil,
 			Metadata: WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
@@ -142,7 +144,7 @@ func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
 			return nil
 		}
 
-	case EncryptedMessage:
+	case types.MessageTypeEncryptedMessage:
 		nonce := msg.Nonce
 		ciphertext := msg.Value
 
@@ -172,7 +174,7 @@ func (connection *Connection) RelayMessage(message, fromUsername, fromColor stri
 	}
 
 	msg := WSMessage{
-		Type:     EncryptedMessage,
+		Type:     types.MessageTypeEncryptedMessage,
 		Value:    ciphertext,
 		Nonce:    nonce,
 		Metadata: WSMetadata{Username: fromUsername, Color: fromColor},
@@ -189,7 +191,7 @@ func (connection *Connection) RelayMessage(message, fromUsername, fromColor stri
 // To be handled by the client
 func (connection *Connection) HandleServerMessage(msg WSMessage) {
 	switch msg.Type {
-	case ExchangeKeys:
+	case types.MessageTypeExchangeKeys:
 		ciphertext := msg.Value
 		sharedSecret, err := connection.Keys.Private.Decapsulate(ciphertext)
 		if err != nil {
@@ -199,11 +201,11 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		ui.EmitToUI(ui.ToUIKeysExchanged, connection.Metadata.Username, connection.Metadata.Color)
+		ui.EmitToUI(types.MessageTypeKeysExchanged, connection.Metadata.Username, connection.Metadata.Color)
 
 		close(connection.KeysExchanged)
 
-	case EncryptedMessage:
+	case types.MessageTypeEncryptedMessage:
 		nonce := msg.Nonce
 		ciphertext := msg.Value
 
@@ -214,17 +216,17 @@ func (connection *Connection) HandleServerMessage(msg WSMessage) {
 			return
 		}
 
-		ui.EmitToUI(ui.ToUIMessage, string(decrypted), msg.Metadata.Color)
-	case UserEntered:
+		ui.EmitToUI(types.MessageTypeMessage, string(decrypted), msg.Metadata.Color)
+	case types.MessageTypeUserEnteredChat:
 		metadata := msg.Metadata
-		ui.EmitToUI(ui.ToUIUserEnteredChat, string(metadata.Username), metadata.Color)
-	case UserLeft:
+		ui.EmitToUI(types.MessageTypeUserEnteredChat, string(metadata.Username), metadata.Color)
+	case types.MessageTypeUserLeftChat:
 		metadata := msg.Metadata
-		ui.EmitToUI(ui.ToUIUserLeftChat, string(metadata.Username), metadata.Color)
-	case CurrentUsers:
+		ui.EmitToUI(types.MessageTypeUserLeftChat, string(metadata.Username), metadata.Color)
+	case types.MessageTypeCurrentUsers:
 		metadata := msg.Metadata
 		value := msg.Value
-		ui.EmitToUI(ui.ToUICurrentUsers, string(value), metadata.Color)
+		ui.EmitToUI(types.MessageTypeCurrentUsers, string(value), metadata.Color)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}
