@@ -1,4 +1,4 @@
-import type { TUIMessage } from "./shared-types";
+import type { TUIMessage } from "./types/shared-types";
 import { EventHandler } from "./singletons/event-handler";
 import { State } from "./singletons/state";
 

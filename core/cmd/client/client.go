@@ -52,7 +52,9 @@ func (client *WSClient) connectionManager() {
 		attempts := client.attempts.Load()
 
 		if attempts == int64(1) {
-			client.userDisconnected()
+			client.informUserOfDisconnectionAndReconnection(types.MessageTypeDisconnected)
+		} else {
+			client.informUserOfDisconnectionAndReconnection(types.MessageTypeReconnecting)
 		}
 
 		if attempts >= int64(MAX_ATTEMPTS) {
@@ -315,10 +317,9 @@ func (client *WSClient) pingRoutine() {
 	}
 }
 
-// Inform TUI that user is disconnected
-func (client *WSClient) userDisconnected() {
+func (client *WSClient) informUserOfDisconnectionAndReconnection(messageType types.MessageType) {
 	connection := client.conn
 
 	metadata := connection.Metadata
-	ui.EmitToUI(types.MessageTypeDisconnected, string(metadata.Username), metadata.Color)
+	ui.EmitToUI(messageType, string(metadata.Username), metadata.Color)
 }

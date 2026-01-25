@@ -8,6 +8,7 @@
  */
 export const MessageTypeConnected = "connected";
 export const MessageTypeDisconnected = "disconnected";
+export const MessageTypeReconnecting = "reconnecting";
 export const MessageTypeKeysExchanged = "keys_exchanged";
 export const MessageTypeMessage = "message";
 /**
@@ -26,4 +27,4 @@ export const MessageTypeEncryptedMessage = "encrypted_message";
  */
 export const MessageTypeConnect = "connect";
 export const MessageTypeSend = "send";
-export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeConnect | typeof MessageTypeSend;
+export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeConnect | typeof MessageTypeSend;
