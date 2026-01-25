@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"pqc/pkg/logger"
+	"github.com/Guilospanck/pqc/core/pkg/logger"
 )
 
 func main() {

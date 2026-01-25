@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"pqc/pkg/ws"
+	"github.com/Guilospanck/pqc/core/pkg/ws"
 	"slices"
 	"sync"
 

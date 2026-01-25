@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"pqc/pkg/cryptography"
-	"pqc/pkg/ui"
+	"github.com/Guilospanck/pqc/core/pkg/cryptography"
+	"github.com/Guilospanck/pqc/core/pkg/ui"
 
 	"github.com/gorilla/websocket"
 )

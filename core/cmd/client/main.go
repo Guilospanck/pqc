@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"pqc/pkg/logger"
-	"pqc/pkg/ui"
+	"github.com/Guilospanck/pqc/core/pkg/logger"
+	"github.com/Guilospanck/pqc/core/pkg/ui"
 )
 
 func main() {
