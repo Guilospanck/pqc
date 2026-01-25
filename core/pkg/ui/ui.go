@@ -3,31 +3,18 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
-)
 
-type UIMessageType string
-
-const (
-	ToUIConnected       UIMessageType = "connected"
-	ToUIDisconnected    UIMessageType = "disconnected"
-	ToUIKeysExchanged   UIMessageType = "keys_exchanged"
-	ToUIMessage         UIMessageType = "message"
-	ToUIUserEnteredChat UIMessageType = "user_entered_chat"
-	ToUIUserLeftChat    UIMessageType = "user_left_chat"
-	ToUICurrentUsers    UIMessageType = "current_users"
-
-	FromUIConnect = "connect"
-	FromUISend    = "send"
+	"github.com/Guilospanck/pqc/core/pkg/types"
 )
 
 type UIMessage struct {
-	Type  UIMessageType `json:"type"`
-	Value string        `json:"value"`
-	Color string        `json:"color"`
+	Type  types.MessageType `json:"type"`
+	Value string            `json:"value"`
+	Color string            `json:"color"`
 }
 
 // We talk to the UI via stdout
-func EmitToUI(msgType UIMessageType, value, color string) {
+func EmitToUI(msgType types.MessageType, value, color string) {
 	var messageColor string = color
 	if len(color) == 0 {
 		messageColor = "#7ee787"

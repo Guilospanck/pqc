@@ -20,6 +20,9 @@ cd core/ && go mod tidy
 cd tui/ && bun i
 ```
 
+> [!NOTE]
+> If you use the `just` commands, it needs [tygo](https://github.com/gzuidhof/tygo) to generate the TS types automatically from Go.
+
 ### Running
 
 In one terminal, start the WS server:

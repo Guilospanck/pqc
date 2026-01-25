@@ -4,7 +4,7 @@ import {
   type ConnectedUser,
   type TUIGoCommunication,
   type TUIMessage,
-} from "./shared-types";
+} from "./types/shared-types";
 import { EventHandler } from "./singletons/event-handler";
 import {
   addConnectedUser,
@@ -77,6 +77,14 @@ export function setupGo(): void {
 
           EventHandler().notify("update_current_user_text", {});
           EventHandler().notify("update_users_panel", {});
+          break;
+        }
+        case "reconnecting": {
+          addMessage({
+            ...tuiMessage,
+            text: "Reconnecting...",
+          });
+
           break;
         }
         case "keys_exchanged": {

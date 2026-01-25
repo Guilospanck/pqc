@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"github.com/Guilospanck/pqc/core/pkg/ws"
 	"slices"
 	"sync"
+
+	"github.com/Guilospanck/pqc/core/pkg/types"
+	"github.com/Guilospanck/pqc/core/pkg/ws"
 
 	"github.com/gorilla/websocket"
 )
@@ -154,7 +156,7 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 
 		decryptedMessageSent := connection.HandleClientMessage(msgJson)
 
-		if msgJson.Type != ws.EncryptedMessage || decryptedMessageSent == nil {
+		if msgJson.Type != types.MessageTypeEncryptedMessage || decryptedMessageSent == nil {
 			continue
 		}
 
@@ -175,7 +177,7 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 
 		// Broadcast user left event to other clients
 		leftMsg := ws.WSMessage{
-			Type:     ws.UserLeft,
+			Type:     types.MessageTypeUserLeftChat,
 			Value:    nil,
 			Nonce:    nil,
 			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
@@ -206,7 +208,7 @@ func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
 	}
 
 	msg := ws.WSMessage{
-		Type:     ws.CurrentUsers,
+		Type:     types.MessageTypeCurrentUsers,
 		Value:    marshalledUsers,
 		Nonce:    nil,
 		Metadata: ws.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color},
@@ -222,7 +224,7 @@ func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
 	connections := srv.currentConnections()
 
 	msg := ws.WSMessage{
-		Type:     ws.UserEntered,
+		Type:     types.MessageTypeUserEnteredChat,
 		Value:    nil,
 		Nonce:    nil,
 		Metadata: ws.WSMetadata{Username: username, Color: color},

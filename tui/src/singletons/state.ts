@@ -1,5 +1,5 @@
 import type { CliRenderer } from "@opentui/core";
-import type { TUIMessage, ConnectedUser } from "../shared-types";
+import type { TUIMessage, ConnectedUser } from "../types/shared-types";
 
 type ConnectedUserKey = string;
 

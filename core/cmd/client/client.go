@@ -5,28 +5,18 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"github.com/Guilospanck/pqc/core/pkg/cryptography"
-	"github.com/Guilospanck/pqc/core/pkg/ui"
-	"github.com/Guilospanck/pqc/core/pkg/ws"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/Guilospanck/pqc/core/pkg/cryptography"
+	"github.com/Guilospanck/pqc/core/pkg/types"
+	"github.com/Guilospanck/pqc/core/pkg/ui"
+	"github.com/Guilospanck/pqc/core/pkg/ws"
+
 	"github.com/gorilla/websocket"
 )
-
-const PONG_WAIT = 10 * time.Second
-const WRITE_WAIT = 5 * time.Second
-
-// INFO: ping period needs to be less than pong wait, otherwise it will
-// timeout the pong before we can ping
-const PING_PERIOD = 5 * time.Second
-
-var QUIT_COMMANDS = []string{"/quit", "/q", "/exit", ":wq", ":q", ":wqa"}
-
-// How many reconnect attemps we are able to do
-const MAX_ATTEMPTS int = 5
 
 type WSClient struct {
 	conn            ws.Connection
@@ -47,19 +37,24 @@ func NewClient() *WSClient {
 	}
 }
 
+// Responsible for handling reconnections.
+//
+// Maximum attemps is defined by the MAX_ATTEMPS constant variable.
 func (client *WSClient) connectionManager() {
 	for {
 		<-client.reconnect
 		client.isConnected = false
 
-		// Cancel all goroutines
+		// Cancel all goroutines that depend on the context
 		log.Printf("[%s] Cancelling context\n", client.conn.Metadata.Username)
 		client.cancelFunc()
 
 		attempts := client.attempts.Load()
 
 		if attempts == int64(1) {
-			client.userDisconnected()
+			ui.EmitToUI(types.MessageTypeDisconnected, string(client.conn.Metadata.Username), client.conn.Metadata.Color)
+		} else {
+			ui.EmitToUI(types.MessageTypeReconnecting, string(client.conn.Metadata.Username), client.conn.Metadata.Color)
 		}
 
 		if attempts >= int64(MAX_ATTEMPTS) {
@@ -128,7 +123,7 @@ func (client *WSClient) connectToWSServer() error {
 	color := res.Header.Get("color")
 	client.conn.Metadata = ws.WSMetadata{Username: username, Color: color}
 	// Tell UI we're connected with some username and color
-	ui.EmitToUI(ui.ToUIConnected, username, color)
+	ui.EmitToUI(types.MessageTypeConnected, username, color)
 
 	if client.conn.Keys.Public == nil {
 		if err := client.generateKeys(); err != nil {
@@ -176,7 +171,7 @@ func (client *WSClient) generateKeys() error {
 
 func (client *WSClient) exchangeKeys() error {
 	msg := ws.WSMessage{
-		Type:     ws.ExchangeKeys,
+		Type:     types.MessageTypeExchangeKeys,
 		Value:    client.conn.Keys.Public,
 		Nonce:    nil,
 		Metadata: client.conn.Metadata,
@@ -257,7 +252,7 @@ func (client *WSClient) sendEncrypted(message string) {
 	}
 
 	msg := ws.WSMessage{
-		Type:     ws.EncryptedMessage,
+		Type:     types.MessageTypeEncryptedMessage,
 		Value:    ciphertext,
 		Nonce:    nonce,
 		Metadata: ws.WSMetadata{Username: client.conn.Metadata.Username, Color: client.conn.Metadata.Color},
@@ -320,12 +315,4 @@ func (client *WSClient) pingRoutine() {
 			return
 		}
 	}
-}
-
-// Inform TUI that user is disconnected
-func (client *WSClient) userDisconnected() {
-	connection := client.conn
-
-	metadata := connection.Metadata
-	ui.EmitToUI(ui.ToUIDisconnected, string(metadata.Username), metadata.Color)
 }
