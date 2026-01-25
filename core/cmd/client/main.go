@@ -10,15 +10,18 @@ import (
 )
 
 func main() {
-	logger.CreateMultiWriterLogger("ws-client-pqc")
-
 	defer log.Println("> Client is gone!")
+	logger.CreateMultiWriterLogger("ws-client-pqc")
 
 	wsClient := NewClient()
 
-	// Start connection manager that will handle things like `reconnect`
 	go wsClient.connectionManager()
 
+	readFromStdin(wsClient)
+}
+
+// Blocking function that keeps reading from the stdin
+func readFromStdin(wsClient *WSClient) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := scanner.Bytes()

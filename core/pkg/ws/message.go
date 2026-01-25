@@ -6,7 +6,7 @@ import (
 	"log"
 )
 
-// Type of communications between WS client and WS server
+// Type of communications between WS client and WS server <-->
 type WSMessageType string
 
 type WSMetadata struct {

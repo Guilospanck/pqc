@@ -16,8 +16,8 @@ const (
 	ToUIUserLeftChat    UIMessageType = "user_left_chat"
 	ToUICurrentUsers    UIMessageType = "current_users"
 
-	FromUIConnect = "connect"
-	FromUISend    = "send"
+	FromUIConnect UIMessageType = "connect"
+	FromUISend    UIMessageType = "send"
 )
 
 type UIMessage struct {

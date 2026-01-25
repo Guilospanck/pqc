@@ -16,18 +16,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const PONG_WAIT = 10 * time.Second
-const WRITE_WAIT = 5 * time.Second
-
-// INFO: ping period needs to be less than pong wait, otherwise it will
-// timeout the pong before we can ping
-const PING_PERIOD = 5 * time.Second
-
-var QUIT_COMMANDS = []string{"/quit", "/q", "/exit", ":wq", ":q", ":wqa"}
-
-// How many reconnect attemps we are able to do
-const MAX_ATTEMPTS int = 5
-
 type WSClient struct {
 	conn            ws.Connection
 	reconnect       chan struct{}
@@ -47,12 +35,15 @@ func NewClient() *WSClient {
 	}
 }
 
+// Responsible for handling reconnections.
+//
+// Maximum attemps is defined by the MAX_ATTEMPS constant variable.
 func (client *WSClient) connectionManager() {
 	for {
 		<-client.reconnect
 		client.isConnected = false
 
-		// Cancel all goroutines
+		// Cancel all goroutines that depend on the context
 		log.Printf("[%s] Cancelling context\n", client.conn.Metadata.Username)
 		client.cancelFunc()
 
