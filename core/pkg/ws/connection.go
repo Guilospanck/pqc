@@ -29,6 +29,8 @@ type Connection struct {
 	WriteLoopClosed chan struct{}
 
 	KeysExchanged chan struct{}
+
+	CurrentRoomID types.RoomId
 }
 
 func NewEmptyConnection() Connection {
@@ -38,11 +40,11 @@ func NewEmptyConnection() Connection {
 		Metadata: WSMetadata{},
 
 		WriteMessageReq: make(chan WriteMessageRequest, 10),
-
 		WriteLoopReady:  make(chan struct{}),
 		WriteLoopClosed: make(chan struct{}),
 
 		KeysExchanged: make(chan struct{}),
+		CurrentRoomID: "", // will be set when joining lobby
 	}
 }
 
