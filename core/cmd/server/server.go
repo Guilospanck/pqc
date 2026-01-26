@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
+	"time"
 
+	"github.com/Guilospanck/pqc/core/pkg/cryptography"
 	"github.com/Guilospanck/pqc/core/pkg/types"
 	"github.com/Guilospanck/pqc/core/pkg/ws"
 
@@ -17,8 +22,17 @@ import (
 
 type clientId string
 
+type Room struct {
+	Name        string
+	ID          types.RoomId
+	CreatedBy   string
+	CreatedAt   time.Time
+	Connections map[clientId]*ws.Connection
+	mu          sync.RWMutex
+}
+
 type WSServer struct {
-	// TODO: create concept of rooms
+	rooms         map[types.RoomId]*Room
 	connections   map[clientId]*ws.Connection
 	usedUsernames []string
 	mu            sync.RWMutex
@@ -26,10 +40,154 @@ type WSServer struct {
 }
 
 func NewServer(ctx context.Context) *WSServer {
-	return &WSServer{
+	server := &WSServer{
+		rooms:         make(map[types.RoomId]*Room),
 		connections:   make(map[clientId]*ws.Connection),
 		ctx:           ctx,
 		usedUsernames: make([]string, 0),
+	}
+
+	// Create default lobby room
+	lobby := &Room{
+		Name:        "lobby",
+		ID:          "lobby",
+		CreatedBy:   "system",
+		CreatedAt:   time.Now(),
+		Connections: make(map[clientId]*ws.Connection),
+	}
+	server.rooms["lobby"] = lobby
+
+	return server
+}
+
+func (srv *WSServer) generateRoomId() types.RoomId {
+	bytes := make([]byte, 8)
+	rand.Read(bytes)
+	return types.RoomId(hex.EncodeToString(bytes))
+}
+
+type RoomInfo struct {
+	Name        string
+	ID          types.RoomId
+	CreatedBy   string
+	MemberCount int
+}
+
+func (srv *WSServer) createRoom(name, creatorUsername string) types.RoomId {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
+	roomID := srv.generateRoomId()
+	room := &Room{
+		Name:        name,
+		ID:          roomID,
+		CreatedBy:   creatorUsername,
+		CreatedAt:   time.Now(),
+		Connections: make(map[clientId]*ws.Connection),
+	}
+	srv.rooms[roomID] = room
+	return roomID
+}
+
+func (srv *WSServer) findRoomByName(name string) (types.RoomId, error) {
+	srv.mu.RLock()
+	defer srv.mu.RUnlock()
+
+	for id, room := range srv.rooms {
+		if room.Name == name {
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("room '%s' not found", name)
+}
+
+func (srv *WSServer) joinRoomByName(roomName string, client *ws.Connection) error {
+	roomID, err := srv.findRoomByName(roomName)
+	if err != nil {
+		return err
+	}
+	return srv.joinRoom(roomID, client)
+}
+
+func (srv *WSServer) joinRoom(roomID types.RoomId, client *ws.Connection) error {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
+	room, exists := srv.rooms[roomID]
+	if !exists {
+		return fmt.Errorf("room with ID '%s' not found", roomID)
+	}
+
+	// Remove from current room if already in one
+	if client.CurrentRoomID != "" {
+		if currentRoom, exists := srv.rooms[client.CurrentRoomID]; exists {
+			delete(currentRoom.Connections, clientId(client.Metadata.Username))
+		}
+	}
+
+	// Add to new room
+	room.Connections[clientId(client.Metadata.Username)] = client
+	client.CurrentRoomID = roomID
+	return nil
+}
+
+func (srv *WSServer) leaveRoom(client *ws.Connection) error {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
+	if client.CurrentRoomID == "" {
+		return fmt.Errorf("not currently in any room")
+	}
+
+	// Remove from current room
+	if currentRoom, exists := srv.rooms[client.CurrentRoomID]; exists {
+		delete(currentRoom.Connections, clientId(client.Metadata.Username))
+	}
+
+	// Join lobby
+	client.CurrentRoomID = "lobby"
+	srv.rooms["lobby"].Connections[clientId(client.Metadata.Username)] = client
+	return nil
+}
+
+func (srv *WSServer) getRoomList() []RoomInfo {
+	srv.mu.RLock()
+	defer srv.mu.RUnlock()
+
+	roomList := make([]RoomInfo, 0, len(srv.rooms))
+	for _, room := range srv.rooms {
+		roomList = append(roomList, RoomInfo{
+			Name:        room.Name,
+			ID:          room.ID,
+			CreatedBy:   room.CreatedBy,
+			MemberCount: len(room.Connections),
+		})
+	}
+	return roomList
+}
+
+func (srv *WSServer) relayMessageToRoom(roomID types.RoomId, message string, sender *ws.Connection) {
+	srv.mu.RLock()
+	room, exists := srv.rooms[roomID]
+	srv.mu.RUnlock()
+
+	if !exists {
+		log.Printf("Attempted to relay message to non-existent room '%s'", roomID)
+		return
+	}
+
+	room.mu.RLock()
+	defer room.mu.RUnlock()
+
+	for _, recipient := range room.Connections {
+		// Don't send message back to sender
+		if recipient.Metadata.Username == sender.Metadata.Username {
+			continue
+		}
+
+		msgWithSender := fmt.Sprintf("%s: %s", sender.Metadata.Username, message)
+		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\" in room \"%s\"", msgWithSender, sender.Metadata.Username, recipient.Metadata.Username, room.Name)
+		recipient.RelayMessage(msgWithSender, sender.Metadata.Username, sender.Metadata.Color)
 	}
 }
 
@@ -122,7 +280,10 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	connection.Conn = conn
 	srv.addConnection(&connection)
 
-	log.Printf("New connection: %s - %s\n", username, color)
+	// Add user to lobby room
+	srv.joinRoom("lobby", &connection)
+
+	log.Printf("New connection: %s - %s (joined lobby)\n", username, color)
 
 	// Start write loop
 	go connection.WriteLoop(srv.ctx)
@@ -160,7 +321,14 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 			continue
 		}
 
-		srv.fanOutUserMessage(connection, decryptedMessageSent)
+		// Check if this is a room command
+		message := string(decryptedMessageSent)
+		if strings.HasPrefix(message, "/") {
+			srv.handleRoomCommand(message, connection)
+			continue
+		}
+
+		srv.relayMessageToRoom(connection.CurrentRoomID, message, connection)
 	}
 }
 
@@ -189,7 +357,89 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 			}
 		}
 
+		// Remove from current room
+		if connection.CurrentRoomID != "" {
+			if currentRoom, exists := srv.rooms[connection.CurrentRoomID]; exists {
+				delete(currentRoom.Connections, clientId(connection.Metadata.Username))
+			}
+		}
+
 		break
+	}
+}
+
+func (srv *WSServer) sendSystemMessage(message, color string, connection *ws.Connection) {
+	nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(message))
+	if err != nil {
+		log.Printf("Could not encrypt system message: %s\n", err.Error())
+		return
+	}
+
+	msg := ws.WSMessage{
+		Type:     types.MessageTypeEncryptedMessage,
+		Value:    ciphertext,
+		Nonce:    nonce,
+		Metadata: ws.WSMetadata{Username: "system", Color: color},
+	}
+	jsonMsg := msg.Marshal()
+
+	if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
+		log.Printf("Could not send system message to client: %s\n", err.Error())
+	}
+}
+
+func (srv *WSServer) handleRoomCommand(message string, connection *ws.Connection) {
+	parts := strings.Fields(message)
+	if len(parts) == 0 {
+		return
+	}
+
+	command := parts[0]
+
+	switch command {
+	case "/create":
+		if len(parts) < 2 {
+			srv.sendSystemMessage("Usage: /create <room-name>", "red", connection)
+			return
+		}
+		roomName := strings.Join(parts[1:], " ")
+		roomID := srv.createRoom(roomName, connection.Metadata.Username)
+		msg := fmt.Sprintf("Created room '%s' with ID '%s'", roomName, roomID)
+		srv.sendSystemMessage(msg, "green", connection)
+
+	case "/join":
+		if len(parts) < 2 {
+			srv.sendSystemMessage("Usage: /join <room-name>", "red", connection)
+			return
+		}
+		roomName := strings.Join(parts[1:], " ")
+		if err := srv.joinRoomByName(roomName, connection); err != nil {
+			srv.sendSystemMessage(fmt.Sprintf("Error: %s", err.Error()), "red", connection)
+		} else {
+			srv.sendSystemMessage(fmt.Sprintf("Joined room '%s'", roomName), "green", connection)
+		}
+
+	case "/leave":
+		if err := srv.leaveRoom(connection); err != nil {
+			srv.sendSystemMessage(fmt.Sprintf("Error: %s", err.Error()), "red", connection)
+		} else {
+			srv.sendSystemMessage("Left room and returned to lobby", "green", connection)
+		}
+
+	case "/list":
+		roomList := srv.getRoomList()
+		if len(roomList) == 0 {
+			srv.sendSystemMessage("No rooms available", "yellow", connection)
+		} else {
+			response := "Available rooms:\n"
+			for _, room := range roomList {
+				response += fmt.Sprintf("- %s (ID: %s, members: %d, created by: %s)\n", room.Name, room.ID, room.MemberCount, room.CreatedBy)
+			}
+			srv.sendSystemMessage(response, "yellow", connection)
+		}
+
+	default:
+		srv.sendSystemMessage(fmt.Sprintf("Unknown command: %s. Available commands: /create, /join, /leave, /list", command), "red", connection)
 	}
 }
 
@@ -234,20 +484,5 @@ func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
 		if err := c.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 			log.Printf("Error trying to inform the client %s that a new connection was made: %s\n", c.Metadata.Username, err.Error())
 		}
-	}
-}
-
-func (srv *WSServer) fanOutUserMessage(client *ws.Connection, decryptedMessage []byte) {
-	connections := srv.currentConnections()
-
-	for _, c := range connections {
-		if string(c.Keys.Public) == string(client.Keys.Public) {
-			continue
-		}
-
-		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Metadata.Username, string(decryptedMessage))
-
-		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", msgWithPublicKey, client.Metadata.Username, c.Metadata.Username)
-		c.RelayMessage(msgWithPublicKey, client.Metadata.Username, client.Metadata.Color)
 	}
 }

@@ -4,6 +4,15 @@ package types
 // using `tygo` if you run the `just start-server` (or `just generate-types`) recipes.
 
 type MessageType = string
+type RoomId = string
+
+type Room struct {
+	Name        string
+	ID          RoomId
+	CreatedBy   string
+	CreatedAt   string                 // ISO 8601 format for tygo compatibility
+	Connections map[string]interface{} // simplified for tygo - actual implementation uses clientId keys
+}
 
 const (
 	// Go to TUI
@@ -25,4 +34,11 @@ const (
 	// TUI to Go
 	MessageTypeConnect MessageType = "connect"
 	MessageTypeSend    MessageType = "send"
+
+	// Room operations
+	MessageTypeCreateRoom  MessageType = "create_room"
+	MessageTypeJoinRoom    MessageType = "join_room"
+	MessageTypeLeaveRoom   MessageType = "leave_room"
+	MessageTypeRoomList    MessageType = "room_list"
+	MessageTypeRoomMessage MessageType = "room_message"
 )
