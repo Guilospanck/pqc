@@ -3,10 +3,10 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"log"
-	"os"
 	"github.com/Guilospanck/pqc/core/pkg/logger"
 	"github.com/Guilospanck/pqc/core/pkg/ui"
+	"log"
+	"os"
 )
 
 func main() {
@@ -38,7 +38,7 @@ func readFromStdin(wsClient *WSClient) {
 			log.Println("Connected to server!")
 
 		case "send":
-			wsClient.sendEncrypted(msg.Value)
+			wsClient.handleTUIMessage(msg.Value)
 		}
 	}
 }

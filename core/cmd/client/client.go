@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -154,7 +155,7 @@ func (client *WSClient) drainDLQ() {
 	for range initial {
 		msg := <-client.deadLetterQueue
 		log.Printf("[%s] Sending message from DLQ: %s", client.conn.Metadata.Username, msg)
-		client.sendEncrypted(msg)
+		client.handleTUIMessage(msg)
 	}
 }
 
@@ -226,7 +227,7 @@ func (client *WSClient) triggerReconnect() {
 	}
 }
 
-func (client *WSClient) sendEncrypted(message string) {
+func (client *WSClient) handleTUIMessage(message string) {
 	if client.conn.Keys.SharedSecret == nil {
 		log.Print("Shared secret not ready")
 		return
@@ -245,8 +246,54 @@ func (client *WSClient) sendEncrypted(message string) {
 		return
 	}
 
+	// Check if it's another command other than QUIT
+	if strings.HasPrefix(text, "/") {
+		client.handleCommand(text)
+		return
+	}
+
+	client.sendEncryptedMessage(text)
+}
+
+func (client *WSClient) closeAndDisconnect() {
+	log.Printf("[%s] Closing connection.", client.conn.Metadata.Username)
+
+	client.cancelFunc()
+	if client.conn.Conn != nil {
+		client.conn.Conn.Close()
+	}
+
+	os.Exit(0)
+}
+
+func (client *WSClient) handleCommand(input string) {
+	fields := strings.Fields(input)
+	command := fields[0]
+	args := fields[1:]
+
+	switch command {
+	case "/join":
+		log.Printf("/join received. Args: %+v\n", args)
+		client.sendSystemMessage(fmt.Sprintf("/join received. Args: %+v\n", args))
+	case "/leave":
+		log.Printf("/leave received. Args: %+v\n", args)
+		client.sendSystemMessage(fmt.Sprintf("/leave received. Args: %+v\n", args))
+	case "/create-room":
+		log.Printf("/create-room received. Args: %+v\n", args)
+		client.sendSystemMessage(fmt.Sprintf("/create-room received. Args: %+v\n", args))
+	default:
+		log.Println("Command does not exist.")
+		client.sendSystemMessage("Command does not exist.")
+	}
+}
+
+func (client *WSClient) sendSystemMessage(message string) {
+	ui.EmitToUI(types.MessageTypeMessage, message, "#F00")
+}
+
+func (client *WSClient) sendEncryptedMessage(message string) {
 	// Encrypt message
-	nonce, ciphertext, err := cryptography.EncryptMessage(client.conn.Keys.SharedSecret, []byte(text))
+	nonce, ciphertext, err := cryptography.EncryptMessage(client.conn.Keys.SharedSecret, []byte(message))
 	if err != nil {
 		log.Printf("Could not encrypt message: %s\n", err.Error())
 		return
@@ -271,17 +318,6 @@ func (client *WSClient) sendEncrypted(message string) {
 		client.deadLetterQueue <- message
 		client.triggerReconnect()
 	}
-}
-
-func (client *WSClient) closeAndDisconnect() {
-	log.Printf("[%s] Closing connection.", client.conn.Metadata.Username)
-
-	client.cancelFunc()
-	if client.conn.Conn != nil {
-		client.conn.Conn.Close()
-	}
-
-	os.Exit(0)
 }
 
 func (client *WSClient) pingRoutine() {
