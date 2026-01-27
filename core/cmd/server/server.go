@@ -250,6 +250,22 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 }
 
 func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connection) {
+	wsMessage := ws.WSMessage{
+		Type:     types.MessageTypeExchangeKeys,
+		Value:    nil,
+		Nonce:    nil,
+		Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color, CurrentRoomId: connection.Metadata.CurrentRoomId},
+	}
+
+	sendMessageToClient := func() {
+		jsonMsg := wsMessage.Marshal()
+
+		if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
+			log.Printf("Could not send message to client: %s\n", err.Error())
+			return
+		}
+	}
+
 	switch msg.Type {
 	case types.MessageTypeExchangeKeys:
 		// Encapsulate ciphertext with the public key from client
@@ -260,63 +276,64 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
 		connection.Keys.Public = msg.Value
 
-		msg := ws.WSMessage{
-			Type:     types.MessageTypeExchangeKeys,
-			Value:    cipherText,
-			Nonce:    nil,
-			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
-		}
-		jsonMsg := msg.Marshal()
+		wsMessage.Value = cipherText
+		wsMessage.Type = types.MessageTypeEncryptedMessage
 
 		// send ciphertext to client so we can exchange keys
-		if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
-			log.Printf("Could not send message to client: %s\n", err.Error())
-			return
-		}
+		sendMessageToClient()
 
 	case types.MessageTypeEncryptedMessage:
 		nonce := msg.Nonce
 		ciphertext := msg.Value
 
-		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
 		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
 		if err != nil {
 			log.Printf("Could not decrypt message from client (%s): %s\n", connection.Metadata.Username, err.Error())
 			return
 		}
-		log.Printf("Decrypted message (%s): \"%s\"\n", connection.Metadata.Username, decrypted)
 
 		if decrypted == nil {
 			return
 		}
 
-		srv.fanOutUserMessage(connection, decrypted)
+		srv.sendMessageToAllConnectionsInTheSameRoom(connection, decrypted)
 
 	case types.MessageTypeJoinRoom:
 		roomName := string(msg.Value)
 		if err := srv.joinRoomByName(roomName, connection); err != nil {
-			// TODO: send to client that error happened
-			return
+			wsMessage.Type = types.MessageTypeError
+			wsMessage.Value = []byte(err.Error())
+		} else {
+			wsMessage.Type = types.MessageTypeSuccess
+			wsMessage.Value = fmt.Appendf(nil, "Joined room %s", roomName)
 		}
-	// TODO: send to client success
+		sendMessageToClient()
 	case types.MessageTypeDeleteRoom:
 		roomName := string(msg.Value)
 		if err := srv.deleteRoomByName(roomName, connection); err != nil {
-			// TODO: send to client that error happened
-			return
+			wsMessage.Type = types.MessageTypeError
+			wsMessage.Value = []byte(err.Error())
+		} else {
+			wsMessage.Type = types.MessageTypeSuccess
+			wsMessage.Value = fmt.Appendf(nil, "Deleted room %s", roomName)
 		}
-	// TODO: send to client success
+		sendMessageToClient()
 	case types.MessageTypeCreateRoom:
 		roomName := string(msg.Value)
 		srv.createRoom(roomName, connection.ID)
-	// TODO: send to client success
+		wsMessage.Type = types.MessageTypeSuccess
+		wsMessage.Value = fmt.Appendf(nil, "Created room %s", roomName)
+		sendMessageToClient()
 	case types.MessageTypeLeaveRoom:
 		roomName := string(msg.Value)
 		if err := srv.leaveRoomByName(roomName, connection); err != nil {
-			// TODO: send to client that error happened
-			return
+			wsMessage.Type = types.MessageTypeError
+			wsMessage.Value = []byte(err.Error())
+		} else {
+			wsMessage.Type = types.MessageTypeSuccess
+			wsMessage.Value = fmt.Appendf(nil, "Left room %s", roomName)
 		}
-	// TODO: send to client success
+		sendMessageToClient()
 
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
@@ -398,17 +415,19 @@ func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
 	}
 }
 
-func (srv *WSServer) fanOutUserMessage(client *ws.Connection, decryptedMessage []byte) {
-	connections := srv.currentConnections()
+func (srv *WSServer) sendMessageToAllConnectionsInTheSameRoom(client *ws.Connection, decryptedMessage []byte) {
+	room, exists := srv.rooms[client.Metadata.CurrentRoomId]
+	if !exists {
+		return
+	}
 
-	for _, c := range connections {
+	for _, c := range room.Connections {
 		if string(c.Keys.Public) == string(client.Keys.Public) {
 			continue
 		}
 
 		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Metadata.Username, string(decryptedMessage))
 
-		log.Printf("Relaying message: \"%s\" from \"%s\" to client \"%s\"\n", msgWithPublicKey, client.Metadata.Username, c.Metadata.Username)
 		c.RelayMessage(msgWithPublicKey, client.Metadata.Username, client.Metadata.Color)
 	}
 }

@@ -25,6 +25,8 @@ const (
 	MessageTypeLeaveRoom        MessageType = "leave_room"
 	MessageTypeCreateRoom       MessageType = "create_room"
 	MessageTypeDeleteRoom       MessageType = "delete_room"
+	MessageTypeSuccess          MessageType = "success"
+	MessageTypeError            MessageType = "error"
 
 	// TUI to Go
 	MessageTypeConnect MessageType = "connect"

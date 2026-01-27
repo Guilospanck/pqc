@@ -1,7 +1,6 @@
 package ws
 
 import (
-	"sync"
 	"time"
 
 	"github.com/Guilospanck/pqc/core/pkg/utils"
@@ -15,7 +14,6 @@ type Room struct {
 	CreatedBy   ClientId
 	Connections map[ClientId]*Connection
 	createdAt   time.Time
-	mu          sync.RWMutex
 }
 
 func NewLobbyRoom() Room {
@@ -39,15 +37,9 @@ func NewRoom(creator ClientId, name string) Room {
 }
 
 func (room *Room) AddConnection(connection *Connection) {
-	room.mu.Lock()
-	defer room.mu.Unlock()
-
 	room.Connections[connection.ID] = connection
 }
 
 func (room *Room) RemoveConnection(connection *Connection) {
-	room.mu.Lock()
-	defer room.mu.Unlock()
-
 	delete(room.Connections, connection.ID)
 }
