@@ -40,31 +40,69 @@ func NewServer(ctx context.Context) *WSServer {
 	}
 }
 
-func (srv *WSServer) addConnection(connection *ws.Connection) {
-	srv.mu.Lock()
-	defer srv.mu.Unlock()
+func (srv *WSServer) startServer() {
+	http.HandleFunc("/ws", srv.wsHandler)
 
-	srv.connections[ws.ClientId(connection.Metadata.Username)] = connection
+	log.Print("WS server started at localhost:8080/ws")
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
+	connection := ws.NewEmptyConnection()
+
+	srv.handleConnectionMetadata(r.Header, &connection)
+
+	conn, err := srv.upgradeWSConnection(w, r, *connection.Metadata)
+	if err != nil {
+		log.Print("Error upgrading WS: ", err)
+		return
+	}
+	defer conn.Close()
+
+	connection.Conn = conn
+	srv.addConnection(&connection)
+
+	log.Printf("New connection: %s - %s\n", connection.Metadata.Username, connection.Metadata.Color)
+
+	// Start write loop
+	go connection.WriteLoop(srv.ctx)
+
+	<-connection.WriteLoopReady
+
+	// Update this newly connected user with info regarding all connected users
+	srv.informUserOfAllCurrentUsers(&connection)
+
+	// Send to other clients the event of a newly connected client
+	srv.fanOutUserEnteredChat(&connection)
+
+	// Start read loop
+	srv.readAndHandleClientMessages(&connection)
+}
+
+func (srv *WSServer) addConnection(connection *ws.Connection) {
+	// Add to server connections
+	srv.connections[connection.ID] = connection
+
+	// Add/Update to the correct room
+	currentRoomId := connection.Metadata.CurrentRoomId
+	_, roomExists := srv.rooms[currentRoomId]
+	if !roomExists {
+		log.Printf("User %s tried to access roomId %s that does not exist. Adding him to lobby.\n", connection.Metadata.Username, currentRoomId)
+		currentRoomId = utils.LOBBY_ROOM
+	}
+
+	srv.joinRoomById(currentRoomId, connection)
+	connection.Metadata.CurrentRoomId = currentRoomId
 }
 
 func (srv *WSServer) removeConnection(id ws.ClientId) {
-	srv.mu.Lock()
-	defer srv.mu.Unlock()
-
-	delete(srv.connections, id)
-}
-
-func (srv *WSServer) currentConnections() []ws.Connection {
-	srv.mu.RLock()
-	defer srv.mu.RUnlock()
-
-	connections := make([]ws.Connection, 0, len(srv.connections))
-
-	for _, c := range srv.connections {
-		connections = append(connections, *c)
+	// Remove client from rooms
+	for _, r := range srv.rooms {
+		r.RemoveConnection(id)
 	}
 
-	return connections
+	// Remove from server connections
+	delete(srv.connections, id)
 }
 
 func (srv *WSServer) getRandomUsername() string {
@@ -81,14 +119,7 @@ func (srv *WSServer) getRandomUsername() string {
 	return generatedUsername
 }
 
-func (srv *WSServer) startServer() {
-	http.HandleFunc("/ws", srv.wsHandler)
-
-	log.Print("WS server started at localhost:8080/ws")
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
-
-func (srv *WSServer) upgradeWSConnection(w http.ResponseWriter, r *http.Request, connection *ws.Connection) (*websocket.Conn, error) {
+func (srv *WSServer) upgradeWSConnection(w http.ResponseWriter, r *http.Request, connectionMetadata ws.WSMetadata) (*websocket.Conn, error) {
 	upgrader := websocket.Upgrader{
 		// INFO: for production you should make this more restrictive
 		CheckOrigin: func(r *http.Request) bool {
@@ -99,20 +130,18 @@ func (srv *WSServer) upgradeWSConnection(w http.ResponseWriter, r *http.Request,
 	// Send the generated username and color to the WSClient
 	// INFO: it needs to be *before* the upgrade
 	responseHeader := http.Header{}
-	responseHeader.Set("username", connection.Metadata.Username)
-	responseHeader.Set("color", connection.Metadata.Color)
+	responseHeader.Set("username", connectionMetadata.Username)
+	responseHeader.Set("color", connectionMetadata.Color)
+	responseHeader.Set("roomId", string(connectionMetadata.CurrentRoomId))
 
 	return upgrader.Upgrade(w, r, responseHeader)
 }
 
-func (srv *WSServer) handleConnectionMetadata(r *http.Request, connection *ws.Connection) {
-	// If a client is reconnecting,
-	// then it will send what was its last known (meta) data.
-	// Also their keys, for that matter.
-	headers := r.Header
+func (srv *WSServer) handleConnectionMetadata(headers http.Header, connection *ws.Connection) {
 	username := headers.Get("username")
 	color := headers.Get("color")
 	currentRoomId := headers.Get("roomId")
+
 	if username == "" {
 		username = srv.getRandomUsername()
 	}
@@ -123,22 +152,19 @@ func (srv *WSServer) handleConnectionMetadata(r *http.Request, connection *ws.Co
 		currentRoomId = utils.LOBBY_ROOM
 	}
 
-	connection.Metadata.Username = username
-	connection.Metadata.Color = color
-
-	_, roomExists := srv.rooms[connection.Metadata.CurrentRoomId]
-	if !roomExists {
-		log.Printf("User %s tried to access roomId %s that does not exist. Adding him to lobby.\n", connection.Metadata.Username, connection.Metadata.CurrentRoomId)
-		currentRoomId = utils.LOBBY_ROOM
+	metadata := ws.WSMetadata{
+		Username:      username,
+		Color:         color,
+		CurrentRoomId: ws.RoomId(currentRoomId),
 	}
 
-	srv.joinRoomById(ws.RoomId(currentRoomId), connection)
-	connection.Metadata.CurrentRoomId = ws.RoomId(currentRoomId)
+	connection.Metadata = &metadata
 }
 
 func (srv *WSServer) joinRoomById(roomId ws.RoomId, connection *ws.Connection) {
 	if room, roomExists := srv.rooms[roomId]; roomExists {
 		room.AddConnection(connection)
+
 		// point user to new room
 		connection.Metadata.CurrentRoomId = room.ID
 	}
@@ -146,9 +172,11 @@ func (srv *WSServer) joinRoomById(roomId ws.RoomId, connection *ws.Connection) {
 
 func (srv *WSServer) leaveRoomById(roomId ws.RoomId, connection *ws.Connection) {
 	if room, roomExists := srv.rooms[roomId]; roomExists {
-		room.RemoveConnection(connection)
-		// point user to lobby
-		connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
+		room.RemoveConnection(connection.ID)
+		// point user to lobby only if they were in this room
+		if connection.Metadata.CurrentRoomId == roomId {
+			connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
+		}
 	}
 }
 
@@ -182,12 +210,16 @@ func (srv *WSServer) createRoom(name string, creator ws.ClientId) {
 func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) error {
 	for _, room := range srv.rooms {
 		if room.Name == name && room.CreatedBy == connection.ID {
-			if len(room.Connections) > 1 {
+			isConnectionCurrentlyInRoom := connection.Metadata.CurrentRoomId == room.ID
+
+			if len(room.Connections) > 1 || len(room.Connections) == 1 && !isConnectionCurrentlyInRoom {
 				return fmt.Errorf("cannot delete the room as it has participants there.")
 			}
 
-			// point user to lobby
-			connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
+			if isConnectionCurrentlyInRoom {
+				// point user to lobby
+				connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
+			}
 
 			delete(srv.rooms, room.ID)
 
@@ -196,38 +228,6 @@ func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) er
 	}
 
 	return fmt.Errorf("could not delete the room named \"%s\" because it either does not exist or you do not have permissions to do that", name)
-}
-
-func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
-	connection := ws.NewEmptyConnection()
-
-	srv.handleConnectionMetadata(r, &connection)
-
-	conn, err := srv.upgradeWSConnection(w, r, &connection)
-	if err != nil {
-		log.Print("Error upgrading WS: ", err)
-		return
-	}
-	defer conn.Close()
-
-	connection.Conn = conn
-	srv.addConnection(&connection)
-
-	log.Printf("New connection: %s - %s\n", connection.Metadata.Username, connection.Metadata.Color)
-
-	// Start write loop
-	go connection.WriteLoop(srv.ctx)
-
-	<-connection.WriteLoopReady
-
-	// Update this newly connected user with info regarding all connected users
-	srv.informUserOfAllCurrentUsers(&connection)
-
-	// Send to other clients the event of a newly connected client
-	srv.fanOutUserEnteredChat(connection.Metadata.Username, connection.Metadata.Color)
-
-	// Start read loop
-	srv.readAndHandleClientMessages(&connection)
 }
 
 func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
@@ -250,8 +250,10 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 }
 
 func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connection) {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
 	wsMessage := ws.WSMessage{
-		Type:     types.MessageTypeExchangeKeys,
 		Value:    nil,
 		Nonce:    nil,
 		Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color, CurrentRoomId: connection.Metadata.CurrentRoomId},
@@ -277,7 +279,7 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		connection.Keys.Public = msg.Value
 
 		wsMessage.Value = cipherText
-		wsMessage.Type = types.MessageTypeEncryptedMessage
+		wsMessage.Type = types.MessageTypeExchangeKeys
 
 		// send ciphertext to client so we can exchange keys
 		sendMessageToClient()
@@ -296,9 +298,10 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 			return
 		}
 
-		srv.sendMessageToAllConnectionsInTheSameRoom(connection, decrypted)
+		srv.sendEncryptedMessageToAllConnectionsInTheSameRoom(connection, decrypted)
 
 	case types.MessageTypeJoinRoom:
+		oldRoom := connection.Metadata.CurrentRoomId
 		roomName := string(msg.Value)
 		if err := srv.joinRoomByName(roomName, connection); err != nil {
 			wsMessage.Type = types.MessageTypeError
@@ -306,8 +309,16 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		} else {
 			wsMessage.Type = types.MessageTypeSuccess
 			wsMessage.Value = fmt.Appendf(nil, "Joined room %s", roomName)
+			log.Printf("%s joined room %s", connection.Metadata.Username, roomName)
+
+			// Remove connection from old room
+			log.Printf("Removing %s from old room %s\n", connection.Metadata.Username, oldRoom)
+			srv.leaveRoomById(oldRoom, connection)
 		}
+
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 		sendMessageToClient()
+
 	case types.MessageTypeDeleteRoom:
 		roomName := string(msg.Value)
 		if err := srv.deleteRoomByName(roomName, connection); err != nil {
@@ -317,13 +328,19 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 			wsMessage.Type = types.MessageTypeSuccess
 			wsMessage.Value = fmt.Appendf(nil, "Deleted room %s", roomName)
 		}
+
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 		sendMessageToClient()
+
 	case types.MessageTypeCreateRoom:
 		roomName := string(msg.Value)
 		srv.createRoom(roomName, connection.ID)
 		wsMessage.Type = types.MessageTypeSuccess
 		wsMessage.Value = fmt.Appendf(nil, "Created room %s", roomName)
+
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 		sendMessageToClient()
+
 	case types.MessageTypeLeaveRoom:
 		roomName := string(msg.Value)
 		if err := srv.leaveRoomByName(roomName, connection); err != nil {
@@ -333,6 +350,8 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 			wsMessage.Type = types.MessageTypeSuccess
 			wsMessage.Value = fmt.Appendf(nil, "Left room %s", roomName)
 		}
+
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 		sendMessageToClient()
 
 	default:
@@ -344,15 +363,17 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 
 // Remove client from connections and broadcast user left event
 func (srv *WSServer) userDisconnected(connection *ws.Connection) {
-	connections := srv.currentConnections()
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
 
-	for _, v := range connections {
-		if v.Metadata.Username != connection.Metadata.Username {
-			continue
-		}
+	srv.removeConnection(connection.ID)
 
-		srv.removeConnection(ws.ClientId(v.Metadata.Username))
+	room, exists := srv.rooms[connection.Metadata.CurrentRoomId]
+	if !exists {
+		return
+	}
 
+	for _, c := range room.Connections {
 		// Broadcast user left event to other clients
 		leftMsg := ws.WSMessage{
 			Type:     types.MessageTypeUserLeftChat,
@@ -361,22 +382,24 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
 		}
 		leftJsonMsg := leftMsg.Marshal()
-		for _, c := range srv.currentConnections() {
-			if err := c.WriteMessage(string(leftJsonMsg), websocket.TextMessage); err != nil {
-				log.Printf("Error trying to inform clients that user left: %s\n", err.Error())
-			}
-		}
 
-		break
+		if err := c.WriteMessage(string(leftJsonMsg), websocket.TextMessage); err != nil {
+			log.Printf("Error trying to inform client %s that user %s left: %s\n", c.ID, connection.ID, err.Error())
+		}
 	}
 }
 
 func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
-	connections := srv.currentConnections()
+	srv.mu.RLock()
+	defer srv.mu.RUnlock()
+
+	room := srv.rooms[newUser.Metadata.CurrentRoomId]
+	connections := room.Connections
+
 	users := make([]ws.WSMetadata, 0, len(connections))
 
 	for _, c := range connections {
-		users = append(users, ws.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color})
+		users = append(users, ws.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color, CurrentRoomId: c.Metadata.CurrentRoomId})
 	}
 
 	marshalledUsers, err := json.Marshal(users)
@@ -389,40 +412,54 @@ func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
 		Type:     types.MessageTypeCurrentUsers,
 		Value:    marshalledUsers,
 		Nonce:    nil,
-		Metadata: ws.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color},
+		Metadata: ws.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color, CurrentRoomId: newUser.Metadata.CurrentRoomId},
 	}
 	jsonMsg := msg.Marshal()
 
 	if err = newUser.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
-		log.Println("Problem sending message to the client regarding the currently connected users")
+		log.Println("Problem sending message to the client regarding the currently connected users: ", err)
 	}
 }
 
-func (srv *WSServer) fanOutUserEnteredChat(username, color string) {
-	connections := srv.currentConnections()
+// Inform people of a room that another user has connected.
+func (srv *WSServer) fanOutUserEnteredChat(connection *ws.Connection) {
+	srv.mu.RLock()
+	defer srv.mu.RUnlock()
 
 	msg := ws.WSMessage{
 		Type:     types.MessageTypeUserEnteredChat,
 		Value:    nil,
 		Nonce:    nil,
-		Metadata: ws.WSMetadata{Username: username, Color: color},
+		Metadata: *connection.Metadata,
 	}
 	jsonMsg := msg.Marshal()
-	for _, c := range connections {
+
+	room, exists := srv.rooms[connection.Metadata.CurrentRoomId]
+	if !exists {
+		log.Printf("Room with id %s does not exist on server.\n", connection.Metadata.CurrentRoomId)
+		return
+	}
+
+	for _, c := range room.Connections {
+		if c.ID == connection.ID {
+			continue
+		}
+
 		if err := c.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 			log.Printf("Error trying to inform the client %s that a new connection was made: %s\n", c.Metadata.Username, err.Error())
 		}
 	}
 }
 
-func (srv *WSServer) sendMessageToAllConnectionsInTheSameRoom(client *ws.Connection, decryptedMessage []byte) {
+func (srv *WSServer) sendEncryptedMessageToAllConnectionsInTheSameRoom(client *ws.Connection, decryptedMessage []byte) {
 	room, exists := srv.rooms[client.Metadata.CurrentRoomId]
 	if !exists {
+		log.Printf("Room with id %s does not exist on server.\n", client.Metadata.CurrentRoomId)
 		return
 	}
 
 	for _, c := range room.Connections {
-		if string(c.Keys.Public) == string(client.Keys.Public) {
+		if c.ID == client.ID {
 			continue
 		}
 

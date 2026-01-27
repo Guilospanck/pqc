@@ -20,7 +20,7 @@ import (
 )
 
 type WSClient struct {
-	conn            ws.Connection
+	conn            *ws.Connection
 	reconnect       chan struct{}
 	attempts        atomic.Int64
 	ctx             context.Context
@@ -31,8 +31,10 @@ type WSClient struct {
 }
 
 func NewClient() *WSClient {
+	connection := ws.NewEmptyConnection()
+
 	return &WSClient{
-		conn:            ws.NewEmptyConnection(),
+		conn:            &connection,
 		reconnect:       make(chan struct{}, 1),
 		isConnected:     false,
 		deadLetterQueue: make(chan string, 10),
@@ -129,7 +131,7 @@ func (client *WSClient) connectToWSServer() error {
 
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
-	client.conn.Metadata = ws.WSMetadata{Username: username, Color: color}
+	client.conn.Metadata = &ws.WSMetadata{Username: username, Color: color}
 	// Tell UI we're connected with some username and color
 	ui.EmitToUI(types.MessageTypeConnected, username, color)
 
@@ -182,7 +184,7 @@ func (client *WSClient) exchangeKeys() error {
 		Type:     types.MessageTypeExchangeKeys,
 		Value:    client.conn.Keys.Public,
 		Nonce:    nil,
-		Metadata: client.conn.Metadata,
+		Metadata: *client.conn.Metadata,
 	}
 	jsonMsg := msg.Marshal()
 
@@ -214,7 +216,7 @@ func (client *WSClient) readAndHandleServerMessages() {
 			continue
 		}
 
-		client.handleServerMessage(msgJson, &client.conn)
+		client.handleServerMessage(msgJson, client.conn)
 
 		select {
 		case <-client.ctx.Done():

@@ -24,7 +24,7 @@ type Connection struct {
 	ID       ClientId
 	Keys     cryptography.Keys
 	Conn     *websocket.Conn
-	Metadata WSMetadata
+	Metadata *WSMetadata
 
 	WriteMessageReq chan WriteMessageRequest
 
@@ -39,7 +39,7 @@ func NewEmptyConnection() Connection {
 		ID:       ClientId(utils.UUID()),
 		Keys:     cryptography.Keys{},
 		Conn:     nil,
-		Metadata: WSMetadata{},
+		Metadata: &WSMetadata{},
 
 		WriteMessageReq: make(chan WriteMessageRequest, 10),
 
@@ -123,6 +123,8 @@ func (ws *Connection) ReadMessage() ([]byte, error) {
 }
 
 func (connection *Connection) RelayMessage(message, fromUsername, fromColor string) {
+	log.Printf("[Room %s] Sending %s from %s to %s\n", connection.Metadata.CurrentRoomId, message, fromUsername, connection.Metadata.Username)
+
 	nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(message))
 	if err != nil {
 		log.Printf("Could not encrypt message: %s\n", err.Error())

@@ -40,6 +40,6 @@ func (room *Room) AddConnection(connection *Connection) {
 	room.Connections[connection.ID] = connection
 }
 
-func (room *Room) RemoveConnection(connection *Connection) {
-	delete(room.Connections, connection.ID)
+func (room *Room) RemoveConnection(id ClientId) {
+	delete(room.Connections, id)
 }
