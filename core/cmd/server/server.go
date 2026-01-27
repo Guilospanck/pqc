@@ -9,25 +9,30 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/Guilospanck/pqc/core/pkg/cryptography"
 	"github.com/Guilospanck/pqc/core/pkg/types"
 	"github.com/Guilospanck/pqc/core/pkg/ws"
 
 	"github.com/gorilla/websocket"
 )
 
-type clientId string
-
 type WSServer struct {
-	// TODO: create concept of rooms
-	connections   map[clientId]*ws.Connection
+	rooms         map[ws.RoomId]*ws.Room
+	connections   map[ws.ClientId]*ws.Connection
 	usedUsernames []string
 	mu            sync.RWMutex
 	ctx           context.Context
 }
 
 func NewServer(ctx context.Context) *WSServer {
+	// create lobby room
+	rooms := make(map[ws.RoomId]*ws.Room)
+	lobbyRoom := ws.NewRoom(ws.ClientId(SYSTEM), LOBBY_ROOM)
+	rooms[lobbyRoom.ID] = &lobbyRoom
+
 	return &WSServer{
-		connections:   make(map[clientId]*ws.Connection),
+		rooms:         rooms,
+		connections:   make(map[ws.ClientId]*ws.Connection),
 		ctx:           ctx,
 		usedUsernames: make([]string, 0),
 	}
@@ -37,10 +42,10 @@ func (srv *WSServer) addConnection(connection *ws.Connection) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 
-	srv.connections[clientId(connection.Metadata.Username)] = connection
+	srv.connections[ws.ClientId(connection.Metadata.Username)] = connection
 }
 
-func (srv *WSServer) removeConnection(id clientId) {
+func (srv *WSServer) removeConnection(id ws.ClientId) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 
@@ -154,7 +159,7 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 			continue
 		}
 
-		decryptedMessageSent := connection.HandleClientMessage(msgJson)
+		decryptedMessageSent := srv.handleClientMessage(msgJson, connection)
 
 		if msgJson.Type != types.MessageTypeEncryptedMessage || decryptedMessageSent == nil {
 			continue
@@ -162,6 +167,53 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 
 		srv.fanOutUserMessage(connection, decryptedMessageSent)
 	}
+}
+
+func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connection) []byte {
+	switch msg.Type {
+	case types.MessageTypeExchangeKeys:
+		// Encapsulate ciphertext with the public key from client
+		// and generates a sharedSecret
+		sharedSecret, cipherText := cryptography.KeyExchange(msg.Value)
+
+		// save the HKDF'ed sharedSecret
+		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
+		connection.Keys.Public = msg.Value
+
+		msg := ws.WSMessage{
+			Type:     types.MessageTypeExchangeKeys,
+			Value:    cipherText,
+			Nonce:    nil,
+			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
+		}
+		jsonMsg := msg.Marshal()
+
+		// send ciphertext to client so we can exchange keys
+		if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
+			log.Printf("Could not send message to client: %s\n", err.Error())
+			return nil
+		}
+
+	case types.MessageTypeEncryptedMessage:
+		nonce := msg.Nonce
+		ciphertext := msg.Value
+
+		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
+		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
+		if err != nil {
+			log.Printf("Could not decrypt message from client (%s): %s\n", connection.Metadata.Username, err.Error())
+			return nil
+		}
+		log.Printf("Decrypted message (%s): \"%s\"\n", connection.Metadata.Username, decrypted)
+
+		return decrypted
+
+	default:
+		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
+	}
+
+	return nil
+
 }
 
 // Remove client from connections and broadcast user left event
@@ -173,7 +225,7 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 			continue
 		}
 
-		srv.removeConnection(clientId(v.Metadata.Username))
+		srv.removeConnection(ws.ClientId(v.Metadata.Username))
 
 		// Broadcast user left event to other clients
 		leftMsg := ws.WSMessage{

@@ -7,7 +7,7 @@ import (
 
 	"github.com/Guilospanck/pqc/core/pkg/cryptography"
 	"github.com/Guilospanck/pqc/core/pkg/types"
-	"github.com/Guilospanck/pqc/core/pkg/ui"
+	"github.com/Guilospanck/pqc/core/pkg/utils"
 
 	"github.com/gorilla/websocket"
 )
@@ -18,7 +18,10 @@ type WriteMessageRequest struct {
 	err     chan error
 }
 
+type ClientId string
+
 type Connection struct {
+	ID       ClientId
 	Keys     cryptography.Keys
 	Conn     *websocket.Conn
 	Metadata WSMetadata
@@ -33,6 +36,7 @@ type Connection struct {
 
 func NewEmptyConnection() Connection {
 	return Connection{
+		ID:       ClientId(utils.UUID()),
 		Keys:     cryptography.Keys{},
 		Conn:     nil,
 		Metadata: WSMetadata{},
@@ -118,54 +122,6 @@ func (ws *Connection) ReadMessage() ([]byte, error) {
 	return msg, err
 }
 
-// To be handled by the server
-func (connection *Connection) HandleClientMessage(msg WSMessage) []byte {
-	switch msg.Type {
-	case types.MessageTypeExchangeKeys:
-		// Encapsulate ciphertext with the public key from client
-		// and generates a sharedSecret
-		sharedSecret, cipherText := cryptography.KeyExchange(msg.Value)
-
-		// save the HKDF'ed sharedSecret
-		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		connection.Keys.Public = msg.Value
-
-		msg := WSMessage{
-			Type:     types.MessageTypeExchangeKeys,
-			Value:    cipherText,
-			Nonce:    nil,
-			Metadata: WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
-		}
-		jsonMsg := msg.Marshal()
-
-		// send ciphertext to client so we can exchange keys
-		if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
-			log.Printf("Could not send message to client: %s\n", err.Error())
-			return nil
-		}
-
-	case types.MessageTypeEncryptedMessage:
-		nonce := msg.Nonce
-		ciphertext := msg.Value
-
-		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
-		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
-		if err != nil {
-			log.Printf("Could not decrypt message from client (%s): %s\n", connection.Metadata.Username, err.Error())
-			return nil
-		}
-		log.Printf("Decrypted message (%s): \"%s\"\n", connection.Metadata.Username, decrypted)
-
-		return decrypted
-
-	default:
-		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
-	}
-
-	return nil
-}
-
-// This is used by the server to fan out a message from one client to others
 func (connection *Connection) RelayMessage(message, fromUsername, fromColor string) {
 	nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(message))
 	if err != nil {
@@ -186,48 +142,4 @@ func (connection *Connection) RelayMessage(message, fromUsername, fromColor stri
 		log.Printf("Could not send message to client: %s\n", err.Error())
 	}
 
-}
-
-// To be handled by the client
-func (connection *Connection) HandleServerMessage(msg WSMessage) {
-	switch msg.Type {
-	case types.MessageTypeExchangeKeys:
-		ciphertext := msg.Value
-		sharedSecret, err := connection.Keys.Private.Decapsulate(ciphertext)
-		if err != nil {
-			log.Printf("Could not get shared secret from ciphertext: %s\n", err.Error())
-			return
-		}
-
-		// Now the client also have the shared secret
-		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		ui.EmitToUI(types.MessageTypeKeysExchanged, connection.Metadata.Username, connection.Metadata.Color)
-
-		close(connection.KeysExchanged)
-
-	case types.MessageTypeEncryptedMessage:
-		nonce := msg.Nonce
-		ciphertext := msg.Value
-
-		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
-		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
-		if err != nil {
-			log.Printf("Could not decrypt message from server: %s\n", err.Error())
-			return
-		}
-
-		ui.EmitToUI(types.MessageTypeMessage, string(decrypted), msg.Metadata.Color)
-	case types.MessageTypeUserEnteredChat:
-		metadata := msg.Metadata
-		ui.EmitToUI(types.MessageTypeUserEnteredChat, string(metadata.Username), metadata.Color)
-	case types.MessageTypeUserLeftChat:
-		metadata := msg.Metadata
-		ui.EmitToUI(types.MessageTypeUserLeftChat, string(metadata.Username), metadata.Color)
-	case types.MessageTypeCurrentUsers:
-		metadata := msg.Metadata
-		value := msg.Value
-		ui.EmitToUI(types.MessageTypeCurrentUsers, string(value), metadata.Color)
-	default:
-		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
-	}
 }

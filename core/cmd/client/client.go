@@ -205,7 +205,8 @@ func (client *WSClient) readAndHandleServerMessages() {
 			log.Printf("[%s] Error unmarshalling message: %s\n", client.conn.Metadata.Username, err.Error())
 			continue
 		}
-		client.conn.HandleServerMessage(msgJson)
+
+		client.handleServerMessage(msgJson, &client.conn)
 
 		select {
 		case <-client.ctx.Done():
@@ -315,4 +316,48 @@ func (client *WSClient) pingRoutine() {
 			return
 		}
 	}
+}
+
+func (client *WSClient) handleServerMessage(msg ws.WSMessage, connection *ws.Connection) {
+	switch msg.Type {
+	case types.MessageTypeExchangeKeys:
+		ciphertext := msg.Value
+		sharedSecret, err := connection.Keys.Private.Decapsulate(ciphertext)
+		if err != nil {
+			log.Printf("Could not get shared secret from ciphertext: %s\n", err.Error())
+			return
+		}
+
+		// Now the client also have the shared secret
+		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
+		ui.EmitToUI(types.MessageTypeKeysExchanged, connection.Metadata.Username, connection.Metadata.Color)
+
+		close(connection.KeysExchanged)
+
+	case types.MessageTypeEncryptedMessage:
+		nonce := msg.Nonce
+		ciphertext := msg.Value
+
+		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
+		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
+		if err != nil {
+			log.Printf("Could not decrypt message from server: %s\n", err.Error())
+			return
+		}
+
+		ui.EmitToUI(types.MessageTypeMessage, string(decrypted), msg.Metadata.Color)
+	case types.MessageTypeUserEnteredChat:
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeUserEnteredChat, string(metadata.Username), metadata.Color)
+	case types.MessageTypeUserLeftChat:
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeUserLeftChat, string(metadata.Username), metadata.Color)
+	case types.MessageTypeCurrentUsers:
+		metadata := msg.Metadata
+		value := msg.Value
+		ui.EmitToUI(types.MessageTypeCurrentUsers, string(value), metadata.Color)
+	default:
+		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
+	}
+
 }
