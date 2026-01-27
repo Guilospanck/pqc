@@ -27,6 +27,7 @@ type WSClient struct {
 	cancelFunc      context.CancelFunc
 	isConnected     bool
 	deadLetterQueue chan string // we save non-delivered non-encrypted messages here
+	currentRoomID   ws.RoomId
 }
 
 func NewClient() *WSClient {
@@ -35,6 +36,7 @@ func NewClient() *WSClient {
 		reconnect:       make(chan struct{}, 1),
 		isConnected:     false,
 		deadLetterQueue: make(chan string, 10),
+		currentRoomID:   ws.RoomId(""), // tbd on connection
 	}
 }
 
@@ -88,9 +90,14 @@ func (client *WSClient) connectToWSServer() error {
 	client.conn.ResetChannels()
 
 	requestHeader := http.Header{}
-	if client.conn.Metadata.Color != "" || client.conn.Metadata.Username != "" {
-		requestHeader.Set("username", client.conn.Metadata.Username)
+	if client.conn.Metadata.Color != "" {
 		requestHeader.Set("color", client.conn.Metadata.Color)
+	}
+	if client.conn.Metadata.Username != "" {
+		requestHeader.Set("username", client.conn.Metadata.Username)
+	}
+	if client.currentRoomID != ws.RoomId("") {
+		requestHeader.Set("roomId", string(client.currentRoomID))
 	}
 
 	conn, res, err := websocket.DefaultDialer.Dial(url, requestHeader)
@@ -252,7 +259,8 @@ func (client *WSClient) handleTUIMessage(message string) {
 		return
 	}
 
-	client.sendEncryptedMessage(text)
+	// Then it's just a normal message to be sent encrypted
+	client.sendMessageToServer(text, types.MessageTypeEncryptedMessage)
 }
 
 func (client *WSClient) closeAndDisconnect() {
@@ -271,19 +279,34 @@ func (client *WSClient) handleCommand(input string) {
 	command := fields[0]
 	args := fields[1:]
 
+	validateRoomsArgs := func() bool {
+		if len(args) != 1 {
+			client.sendSystemMessage(fmt.Sprintf("Error.\nUsage: %s <room-name>\n", command))
+			return false
+		}
+
+		return true
+	}
+
 	switch command {
 	case "/join":
-		log.Printf("/join received. Args: %+v\n", args)
-		client.sendSystemMessage(fmt.Sprintf("/join received. Args: %+v\n", args))
+		if validateRoomsArgs() {
+			client.sendMessageToServer(args[0], types.MessageTypeJoinRoom)
+		}
 	case "/leave":
-		log.Printf("/leave received. Args: %+v\n", args)
-		client.sendSystemMessage(fmt.Sprintf("/leave received. Args: %+v\n", args))
-	case "/create-room":
-		log.Printf("/create-room received. Args: %+v\n", args)
-		client.sendSystemMessage(fmt.Sprintf("/create-room received. Args: %+v\n", args))
+		if validateRoomsArgs() {
+			client.sendMessageToServer(args[0], types.MessageTypeLeaveRoom)
+		}
+	case "/create":
+		if validateRoomsArgs() {
+			client.sendMessageToServer(args[0], types.MessageTypeCreateRoom)
+		}
+	case "/delete":
+		if validateRoomsArgs() {
+			client.sendMessageToServer(args[0], types.MessageTypeDeleteRoom)
+		}
 	default:
-		log.Println("Command does not exist.")
-		client.sendSystemMessage("Command does not exist.")
+		client.sendSystemMessage(fmt.Sprintf("Command \"%s\" not recognised.\nAvailable commands: /join, /leave, /create-room, /delete-room", command))
 	}
 }
 
@@ -291,31 +314,44 @@ func (client *WSClient) sendSystemMessage(message string) {
 	ui.EmitToUI(types.MessageTypeMessage, message, "#F00")
 }
 
-func (client *WSClient) sendEncryptedMessage(message string) {
-	// Encrypt message
-	nonce, ciphertext, err := cryptography.EncryptMessage(client.conn.Keys.SharedSecret, []byte(message))
-	if err != nil {
-		log.Printf("Could not encrypt message: %s\n", err.Error())
-		return
+func (client *WSClient) sendMessageToServer(tuiMessage string, msgType types.MessageType) {
+	wsMessage := ws.WSMessage{
+		Type: msgType,
+		Metadata: ws.WSMetadata{
+			Username:      client.conn.Metadata.Username,
+			Color:         client.conn.Metadata.Color,
+			CurrentRoomId: client.conn.Metadata.CurrentRoomId,
+		},
 	}
 
-	msg := ws.WSMessage{
-		Type:     types.MessageTypeEncryptedMessage,
-		Value:    ciphertext,
-		Nonce:    nonce,
-		Metadata: ws.WSMetadata{Username: client.conn.Metadata.Username, Color: client.conn.Metadata.Color},
+	switch msgType {
+	case types.MessageTypeEncryptedMessage:
+		nonce, ciphertext, err := cryptography.EncryptMessage(client.conn.Keys.SharedSecret, []byte(tuiMessage))
+		if err != nil {
+			log.Printf("Could not encrypt message: %s\n", err.Error())
+			return
+		}
+
+		wsMessage.Value = ciphertext
+		wsMessage.Nonce = nonce
+
+	case types.MessageTypeJoinRoom, types.MessageTypeCreateRoom, types.MessageTypeLeaveRoom, types.MessageTypeDeleteRoom:
+		wsMessage.Value = []byte(tuiMessage)
+
+	default:
+		log.Printf("This message type (%s) is not recognisable in the client from TUI.\n", msgType)
 	}
-	jsonMsg := msg.Marshal()
+
+	jsonMsg := wsMessage.Marshal()
 
 	if !client.isConnected {
-		client.deadLetterQueue <- message
+		client.deadLetterQueue <- tuiMessage
 		return
 	}
 
-	// Send encrypted message
 	if err := client.conn.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Printf("Error writing message to server: %s\n", err.Error())
-		client.deadLetterQueue <- message
+		client.deadLetterQueue <- tuiMessage
 		client.triggerReconnect()
 	}
 }

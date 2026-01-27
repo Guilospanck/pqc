@@ -11,6 +11,7 @@ import (
 
 	"github.com/Guilospanck/pqc/core/pkg/cryptography"
 	"github.com/Guilospanck/pqc/core/pkg/types"
+	"github.com/Guilospanck/pqc/core/pkg/utils"
 	"github.com/Guilospanck/pqc/core/pkg/ws"
 
 	"github.com/gorilla/websocket"
@@ -27,7 +28,8 @@ type WSServer struct {
 func NewServer(ctx context.Context) *WSServer {
 	// create lobby room
 	rooms := make(map[ws.RoomId]*ws.Room)
-	lobbyRoom := ws.NewRoom(ws.ClientId(SYSTEM), LOBBY_ROOM)
+
+	lobbyRoom := ws.NewLobbyRoom()
 	rooms[lobbyRoom.ID] = &lobbyRoom
 
 	return &WSServer{
@@ -86,38 +88,122 @@ func (srv *WSServer) startServer() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-var upgrader = websocket.Upgrader{
-	// INFO: for production you should make this more restrictive
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+func (srv *WSServer) upgradeWSConnection(w http.ResponseWriter, r *http.Request, connection *ws.Connection) (*websocket.Conn, error) {
+	upgrader := websocket.Upgrader{
+		// INFO: for production you should make this more restrictive
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+
+	// Send the generated username and color to the WSClient
+	// INFO: it needs to be *before* the upgrade
+	responseHeader := http.Header{}
+	responseHeader.Set("username", connection.Metadata.Username)
+	responseHeader.Set("color", connection.Metadata.Color)
+
+	return upgrader.Upgrade(w, r, responseHeader)
 }
 
-func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
-	connection := ws.NewEmptyConnection()
-
+func (srv *WSServer) handleConnectionMetadata(r *http.Request, connection *ws.Connection) {
 	// If a client is reconnecting,
-	// then it will send what was its last known name and color.
+	// then it will send what was its last known (meta) data.
 	// Also their keys, for that matter.
 	headers := r.Header
 	username := headers.Get("username")
 	color := headers.Get("color")
-	if username == "" || color == "" {
+	currentRoomId := headers.Get("roomId")
+	if username == "" {
 		username = srv.getRandomUsername()
+	}
+	if color == "" {
 		color = GetRandomColor()
+	}
+	if currentRoomId == "" {
+		currentRoomId = utils.LOBBY_ROOM
 	}
 
 	connection.Metadata.Username = username
 	connection.Metadata.Color = color
 
-	// Send the generated username and color to the WSClient
-	// INFO: it needs to be *before* the upgrade
-	responseHeader := http.Header{}
-	responseHeader.Set("username", username)
-	responseHeader.Set("color", color)
+	_, roomExists := srv.rooms[connection.Metadata.CurrentRoomId]
+	if !roomExists {
+		log.Printf("User %s tried to access roomId %s that does not exist. Adding him to lobby.\n", connection.Metadata.Username, connection.Metadata.CurrentRoomId)
+		currentRoomId = utils.LOBBY_ROOM
+	}
 
-	conn, err := upgrader.Upgrade(w, r, responseHeader)
+	srv.joinRoomById(ws.RoomId(currentRoomId), connection)
+	connection.Metadata.CurrentRoomId = ws.RoomId(currentRoomId)
+}
 
+func (srv *WSServer) joinRoomById(roomId ws.RoomId, connection *ws.Connection) {
+	if room, roomExists := srv.rooms[roomId]; roomExists {
+		room.AddConnection(connection)
+		// point user to new room
+		connection.Metadata.CurrentRoomId = room.ID
+	}
+}
+
+func (srv *WSServer) leaveRoomById(roomId ws.RoomId, connection *ws.Connection) {
+	if room, roomExists := srv.rooms[roomId]; roomExists {
+		room.RemoveConnection(connection)
+		// point user to lobby
+		connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
+	}
+}
+
+func (srv *WSServer) joinRoomByName(name string, connection *ws.Connection) error {
+	for _, room := range srv.rooms {
+		if room.Name == name {
+			srv.joinRoomById(room.ID, connection)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("could not find a room named \"%s\"", name)
+}
+
+func (srv *WSServer) leaveRoomByName(name string, connection *ws.Connection) error {
+	for _, room := range srv.rooms {
+		if room.Name == name {
+			srv.leaveRoomById(room.ID, connection)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("could not find a room named \"%s\"", name)
+}
+
+func (srv *WSServer) createRoom(name string, creator ws.ClientId) {
+	room := ws.NewRoom(creator, name)
+	srv.rooms[room.ID] = &room
+}
+
+func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) error {
+	for _, room := range srv.rooms {
+		if room.Name == name && room.CreatedBy == connection.ID {
+			if len(room.Connections) > 1 {
+				return fmt.Errorf("cannot delete the room as it has participants there.")
+			}
+
+			// point user to lobby
+			connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
+
+			delete(srv.rooms, room.ID)
+
+			return nil
+		}
+	}
+
+	return fmt.Errorf("could not delete the room named \"%s\" because it either does not exist or you do not have permissions to do that", name)
+}
+
+func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
+	connection := ws.NewEmptyConnection()
+
+	srv.handleConnectionMetadata(r, &connection)
+
+	conn, err := srv.upgradeWSConnection(w, r, &connection)
 	if err != nil {
 		log.Print("Error upgrading WS: ", err)
 		return
@@ -127,7 +213,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	connection.Conn = conn
 	srv.addConnection(&connection)
 
-	log.Printf("New connection: %s - %s\n", username, color)
+	log.Printf("New connection: %s - %s\n", connection.Metadata.Username, connection.Metadata.Color)
 
 	// Start write loop
 	go connection.WriteLoop(srv.ctx)
@@ -138,7 +224,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	srv.informUserOfAllCurrentUsers(&connection)
 
 	// Send to other clients the event of a newly connected client
-	srv.fanOutUserEnteredChat(username, color)
+	srv.fanOutUserEnteredChat(connection.Metadata.Username, connection.Metadata.Color)
 
 	// Start read loop
 	srv.readAndHandleClientMessages(&connection)
@@ -159,17 +245,11 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 			continue
 		}
 
-		decryptedMessageSent := srv.handleClientMessage(msgJson, connection)
-
-		if msgJson.Type != types.MessageTypeEncryptedMessage || decryptedMessageSent == nil {
-			continue
-		}
-
-		srv.fanOutUserMessage(connection, decryptedMessageSent)
+		srv.handleClientMessage(msgJson, connection)
 	}
 }
 
-func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connection) []byte {
+func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connection) {
 	switch msg.Type {
 	case types.MessageTypeExchangeKeys:
 		// Encapsulate ciphertext with the public key from client
@@ -191,7 +271,7 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		// send ciphertext to client so we can exchange keys
 		if err := connection.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 			log.Printf("Could not send message to client: %s\n", err.Error())
-			return nil
+			return
 		}
 
 	case types.MessageTypeEncryptedMessage:
@@ -202,18 +282,47 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
 		if err != nil {
 			log.Printf("Could not decrypt message from client (%s): %s\n", connection.Metadata.Username, err.Error())
-			return nil
+			return
 		}
 		log.Printf("Decrypted message (%s): \"%s\"\n", connection.Metadata.Username, decrypted)
 
-		return decrypted
+		if decrypted == nil {
+			return
+		}
+
+		srv.fanOutUserMessage(connection, decrypted)
+
+	case types.MessageTypeJoinRoom:
+		roomName := string(msg.Value)
+		if err := srv.joinRoomByName(roomName, connection); err != nil {
+			// TODO: send to client that error happened
+			return
+		}
+	// TODO: send to client success
+	case types.MessageTypeDeleteRoom:
+		roomName := string(msg.Value)
+		if err := srv.deleteRoomByName(roomName, connection); err != nil {
+			// TODO: send to client that error happened
+			return
+		}
+	// TODO: send to client success
+	case types.MessageTypeCreateRoom:
+		roomName := string(msg.Value)
+		srv.createRoom(roomName, connection.ID)
+	// TODO: send to client success
+	case types.MessageTypeLeaveRoom:
+		roomName := string(msg.Value)
+		if err := srv.leaveRoomByName(roomName, connection); err != nil {
+			// TODO: send to client that error happened
+			return
+		}
+	// TODO: send to client success
 
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}
 
-	return nil
-
+	log.Printf(">>>> CURRENT ROOM for user %s: %s\n", connection.Metadata.Username, connection.Metadata.CurrentRoomId)
 }
 
 // Remove client from connections and broadcast user left event

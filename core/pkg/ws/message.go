@@ -9,8 +9,9 @@ import (
 )
 
 type WSMetadata struct {
-	Username string `json:"username"`
-	Color    string `json:"color"`
+	Username      string `json:"username"`
+	Color         string `json:"color"`
+	CurrentRoomId RoomId `json:"currentRoomId"`
 }
 
 type WSMessage struct {

@@ -21,6 +21,10 @@ const (
 	// Go <-> Go (ws)
 	MessageTypeExchangeKeys     MessageType = "exchange_keys"
 	MessageTypeEncryptedMessage MessageType = "encrypted_message"
+	MessageTypeJoinRoom         MessageType = "join_room"
+	MessageTypeLeaveRoom        MessageType = "leave_room"
+	MessageTypeCreateRoom       MessageType = "create_room"
+	MessageTypeDeleteRoom       MessageType = "delete_room"
 
 	// TUI to Go
 	MessageTypeConnect MessageType = "connect"

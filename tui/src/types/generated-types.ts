@@ -22,9 +22,13 @@ export const MessageTypeCurrentUsers = "current_users";
  */
 export const MessageTypeExchangeKeys = "exchange_keys";
 export const MessageTypeEncryptedMessage = "encrypted_message";
+export const MessageTypeJoinRoom = "join_room";
+export const MessageTypeLeaveRoom = "leave_room";
+export const MessageTypeCreateRoom = "create_room";
+export const MessageTypeDeleteRoom = "delete_room";
 /**
  * TUI to Go
  */
 export const MessageTypeConnect = "connect";
 export const MessageTypeSend = "send";
-export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeConnect | typeof MessageTypeSend;
+export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeJoinRoom | typeof MessageTypeLeaveRoom | typeof MessageTypeCreateRoom | typeof MessageTypeDeleteRoom | typeof MessageTypeConnect | typeof MessageTypeSend;
