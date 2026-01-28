@@ -83,6 +83,9 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *WSServer) addConnection(connection *ws.Connection) {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
 	// Add to server connections
 	srv.connections[connection.ID] = connection
 
@@ -108,16 +111,18 @@ func (srv *WSServer) removeConnection(id types.ClientId) {
 }
 
 func (srv *WSServer) getRandomUsername() string {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
 	generatedUsername := ""
 
 	for {
 		generatedUsername = GetRandomName()
 		if !slices.Contains(srv.usedUsernames, generatedUsername) {
+			srv.usedUsernames = append(srv.usedUsernames, generatedUsername)
 			break
 		}
 	}
-
-	srv.usedUsernames = append(srv.usedUsernames, generatedUsername)
 	return generatedUsername
 }
 
