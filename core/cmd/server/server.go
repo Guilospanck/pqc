@@ -92,7 +92,6 @@ func (srv *WSServer) addConnection(connection *ws.Connection) {
 	}
 
 	srv.joinRoomById(currentRoomId, connection)
-	connection.Metadata.CurrentRoomId = currentRoomId
 }
 
 func (srv *WSServer) removeConnection(id ws.ClientId) {
@@ -170,12 +169,14 @@ func (srv *WSServer) joinRoomById(roomId ws.RoomId, connection *ws.Connection) {
 	}
 }
 
+// TODO: change the message if a user tries to leave a room he is not in.
 func (srv *WSServer) leaveRoomById(roomId ws.RoomId, connection *ws.Connection) {
 	if room, roomExists := srv.rooms[roomId]; roomExists {
 		room.RemoveConnection(connection.ID)
-		// point user to lobby only if they were in this room
-		if connection.Metadata.CurrentRoomId == roomId {
-			connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
+
+		isConnectionCurrentlyInRoom := connection.Metadata.CurrentRoomId == room.ID
+		if isConnectionCurrentlyInRoom {
+			srv.joinRoomById(utils.LOBBY_ROOM, connection)
 		}
 	}
 }
@@ -231,8 +232,7 @@ func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) er
 	}
 
 	if isConnectionCurrentlyInRoom {
-		// point user to lobby
-		connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
+		srv.joinRoomById(utils.LOBBY_ROOM, connection)
 	}
 
 	delete(srv.rooms, room.ID)
@@ -259,8 +259,6 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 	}
 }
 
-// TODO: there's still a bug somewhere (not necessarily here), where the user, who was in lobby
-// but then tried deleting a room he created, can send messages to other people in the lobby, but can't receive them.
 func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connection) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
