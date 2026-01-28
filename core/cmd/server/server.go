@@ -208,26 +208,36 @@ func (srv *WSServer) createRoom(name string, creator ws.ClientId) {
 }
 
 func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) error {
-	for _, room := range srv.rooms {
-		if room.Name == name && room.CreatedBy == connection.ID {
-			isConnectionCurrentlyInRoom := connection.Metadata.CurrentRoomId == room.ID
+	var room *ws.Room = nil
 
-			if len(room.Connections) > 1 || len(room.Connections) == 1 && !isConnectionCurrentlyInRoom {
-				return fmt.Errorf("cannot delete the room as it has participants there.")
-			}
-
-			if isConnectionCurrentlyInRoom {
-				// point user to lobby
-				connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
-			}
-
-			delete(srv.rooms, room.ID)
-
-			return nil
+	for _, r := range srv.rooms {
+		if r.Name == name {
+			room = r
+			break
 		}
 	}
 
-	return fmt.Errorf("could not delete the room named \"%s\" because it either does not exist or you do not have permissions to do that", name)
+	if room == nil {
+		return fmt.Errorf("could not delete the room named \"%s\" because it does not exist", name)
+	}
+
+	if room.CreatedBy != connection.ID {
+		return fmt.Errorf("could not delete the room named \"%s\" because you do not have permissions to do that", name)
+	}
+
+	isConnectionCurrentlyInRoom := connection.Metadata.CurrentRoomId == room.ID
+	if len(room.Connections) > 1 || len(room.Connections) == 1 && !isConnectionCurrentlyInRoom {
+		return fmt.Errorf("cannot delete the room as it has other participants there.")
+	}
+
+	if isConnectionCurrentlyInRoom {
+		// point user to lobby
+		connection.Metadata.CurrentRoomId = utils.LOBBY_ROOM
+	}
+
+	delete(srv.rooms, room.ID)
+
+	return nil
 }
 
 func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
