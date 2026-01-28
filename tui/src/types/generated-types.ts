@@ -17,14 +17,44 @@ export const MessageTypeMessage = "message";
 export const MessageTypeUserEnteredChat = "user_entered_chat";
 export const MessageTypeUserLeftChat = "user_left_chat";
 export const MessageTypeCurrentUsers = "current_users";
+export const MessageTypeSuccess = "success";
+export const MessageTypeError = "error";
+export const MessageTypeJoinedRoom = "joined_room";
+export const MessageTypeLeftRoom = "left_room";
+export const MessageTypeCreatedRoom = "created_room";
+export const MessageTypeDeletedRoom = "deleted_room";
+export const MessageTypeAvailableRooms = "available_rooms";
 /**
  * Go <-> Go (ws)
  */
 export const MessageTypeExchangeKeys = "exchange_keys";
 export const MessageTypeEncryptedMessage = "encrypted_message";
+export const MessageTypeJoinRoom = "join_room";
+export const MessageTypeLeaveRoom = "leave_room";
+export const MessageTypeCreateRoom = "create_room";
+export const MessageTypeDeleteRoom = "delete_room";
 /**
  * TUI to Go
  */
 export const MessageTypeConnect = "connect";
 export const MessageTypeSend = "send";
-export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeConnect | typeof MessageTypeSend;
+export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeSuccess | typeof MessageTypeError | typeof MessageTypeJoinedRoom | typeof MessageTypeLeftRoom | typeof MessageTypeCreatedRoom | typeof MessageTypeDeletedRoom | typeof MessageTypeAvailableRooms | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeJoinRoom | typeof MessageTypeLeaveRoom | typeof MessageTypeCreateRoom | typeof MessageTypeDeleteRoom | typeof MessageTypeConnect | typeof MessageTypeSend;
+export type ClientId = string;
+export type RoomId = string;
+export interface WSMetadata {
+  userId: ClientId;
+  username: string;
+  color: string;
+  currentRoomId: RoomId;
+}
+export interface UIMessage {
+  type: MessageType;
+  value: string;
+  metadata: WSMetadata;
+}
+export interface RoomInfo {
+  ID: RoomId;
+  Name: string;
+  CreatedBy: ClientId;
+  CreatedAt: string;
+}

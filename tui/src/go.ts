@@ -1,17 +1,18 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type Stream from "node:stream";
-import {
-  type ConnectedUser,
-  type TUIGoCommunication,
-  type TUIMessage,
-} from "./types/shared-types";
+import { type ConnectedUser, type TUIMessage } from "./types/shared-types";
 import { EventHandler } from "./singletons/event-handler";
 import {
   addConnectedUser,
   addMultipleConnectedUsers,
+  addMultipleRooms,
+  addRoom,
   removeConnectedUser,
+  removeRoom,
   State,
+  updateCurrentRoom,
 } from "./singletons/state";
+import type { RoomInfo, UIMessage } from "./types/generated-types";
 
 let goProcess:
   | ChildProcessByStdio<Stream.Writable, Stream.Readable, Stream.Readable>
@@ -35,7 +36,7 @@ export function setupGo(): void {
     const commands = String(data).trim().split("\n");
 
     for (const command of commands) {
-      let message: TUIGoCommunication;
+      let message: UIMessage;
       try {
         message = JSON.parse(command);
       } catch {
@@ -46,13 +47,12 @@ export function setupGo(): void {
       let tuiMessage: Omit<TUIMessage, "timestamp"> = {
         text: "",
         isSent: false,
-        color: message.color,
+        color: message.metadata.color,
       };
 
       switch (message.type) {
         case "connected": {
-          State.username = message.value;
-          State.userColor = message.color;
+          State.currentUser = message.metadata;
           State.isConnected = true;
 
           addMessage({
@@ -67,8 +67,7 @@ export function setupGo(): void {
         case "disconnected": {
           State.isConnected = false;
           State.connectedUsers = new Map();
-          State.username = message.value;
-          State.userColor = message.color;
+          State.currentUser = message.metadata;
 
           addMessage({
             ...tuiMessage,
@@ -102,15 +101,12 @@ export function setupGo(): void {
           break;
         }
         case "user_entered_chat": {
-          addConnectedUser({ username: message.value, color: message.color });
+          addConnectedUser(message.metadata);
           EventHandler().notify("update_users_panel", {});
           break;
         }
         case "user_left_chat": {
-          removeConnectedUser({
-            username: message.value,
-            color: message.color,
-          });
+          removeConnectedUser(message.metadata);
           EventHandler().notify("update_users_panel", {});
           break;
         }
@@ -127,6 +123,77 @@ export function setupGo(): void {
 
           addMultipleConnectedUsers(users);
           EventHandler().notify("update_users_panel", {});
+          break;
+        }
+        case "error":
+        case "success": {
+          addMessage({
+            ...tuiMessage,
+            text: message.value,
+          });
+          break;
+        }
+        case "joined_room": {
+          let room: RoomInfo;
+          try {
+            room = JSON.parse(message.value);
+
+            updateCurrentRoom(room);
+            EventHandler().notify("update_rooms_panel", {});
+          } catch (err) {
+            console.error(
+              "Could not parse room from `joined_room` event. Error: ",
+              err,
+            );
+          }
+          break;
+        }
+        case "left_room": {
+          break;
+        }
+        case "created_room": {
+          let room: RoomInfo;
+          try {
+            room = JSON.parse(message.value);
+
+            addRoom(room);
+            EventHandler().notify("update_rooms_panel", {});
+          } catch (err) {
+            console.error(
+              "Could not parse room from `created_room` event. Error: ",
+              err,
+            );
+          }
+          break;
+        }
+        case "deleted_room": {
+          let room: RoomInfo;
+          try {
+            room = JSON.parse(message.value);
+
+            removeRoom(room);
+            EventHandler().notify("update_rooms_panel", {});
+          } catch (err) {
+            console.error(
+              "Could not parse room from `deleted_room` event. Error: ",
+              err,
+            );
+          }
+          break;
+        }
+        case "available_rooms": {
+          let rooms: Array<RoomInfo> = [];
+          try {
+            rooms = JSON.parse(message.value);
+          } catch (err) {
+            console.error(
+              "Could not parse rooms from `available_rooms` event. Error: ",
+              err,
+            );
+          }
+
+          addMultipleRooms(rooms);
+          EventHandler().notify("update_rooms_panel", {});
           break;
         }
       }

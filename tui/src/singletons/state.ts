@@ -1,7 +1,9 @@
 import type { CliRenderer } from "@opentui/core";
 import type { TUIMessage, ConnectedUser } from "../types/shared-types";
+import type { RoomInfo } from "../types/generated-types";
 
 type ConnectedUserKey = string;
+type RoomId = string;
 
 type StateType = {
   renderer: CliRenderer | undefined;
@@ -9,8 +11,9 @@ type StateType = {
   currentInput: string;
   inputCursorPosition: number;
   connectedUsers: Map<ConnectedUserKey, ConnectedUser>;
-  username: string;
-  userColor: string;
+  availableRooms: Map<RoomId, RoomInfo>;
+  currentRoom: RoomInfo | null;
+  currentUser: ConnectedUser | null;
   isConnected: boolean;
 };
 
@@ -20,8 +23,9 @@ export const State: StateType = {
   currentInput: "",
   inputCursorPosition: 0,
   connectedUsers: new Map(),
-  username: "",
-  userColor: "",
+  availableRooms: new Map(),
+  currentRoom: null,
+  currentUser: null,
   isConnected: false,
 };
 
@@ -30,28 +34,44 @@ export function ClearState(): void {
   State.currentInput = "";
   State.inputCursorPosition = 0;
   State.connectedUsers = new Map();
-  State.username = "";
-  State.userColor = "";
+  State.availableRooms = new Map();
+  State.currentUser = null;
+  State.currentRoom = null;
   State.isConnected = false;
-}
-
-function key(connectedUser: ConnectedUser): string {
-  return `${connectedUser.username}:${connectedUser.color}`;
 }
 
 export function addMultipleConnectedUsers(users: Array<ConnectedUser>): void {
   for (const user of users) {
-    State.connectedUsers.set(key(user), user);
+    State.connectedUsers.set(user.userId, user);
   }
 }
 
 export function addConnectedUser(user: ConnectedUser): void {
-  if (user.username === State.username) return;
-  State.connectedUsers.set(key(user), user);
+  if (user.userId === State.currentUser?.userId) return;
+  State.connectedUsers.set(user.userId, user);
 }
 
 export function removeConnectedUser(user: ConnectedUser): void {
-  if (user.username === State.username) return;
+  if (user.userId === State.currentUser?.userId) return;
 
-  State.connectedUsers.delete(key(user));
+  State.connectedUsers.delete(user.userId);
+}
+
+export function addMultipleRooms(rooms: Array<RoomInfo>): void {
+  State.availableRooms = new Map();
+  for (const room of rooms) {
+    State.availableRooms.set(room.ID, room);
+  }
+}
+
+export function addRoom(room: RoomInfo): void {
+  State.availableRooms.set(room.ID, room);
+}
+
+export function removeRoom(room: RoomInfo): void {
+  State.availableRooms.delete(room.ID);
+}
+
+export function updateCurrentRoom(room: RoomInfo): void {
+  State.currentRoom = room;
 }

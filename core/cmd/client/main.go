@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+
 	"github.com/Guilospanck/pqc/core/pkg/logger"
-	"github.com/Guilospanck/pqc/core/pkg/ui"
+	"github.com/Guilospanck/pqc/core/pkg/types"
 )
 
 func main() {
@@ -26,7 +27,7 @@ func readFromStdin(wsClient *WSClient) {
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
-		var msg ui.UIMessage
+		var msg types.UIMessage
 		if err := json.Unmarshal(line, &msg); err != nil {
 			log.Println("Error unmarshalling message from stdin: ", err)
 			continue
@@ -38,7 +39,7 @@ func readFromStdin(wsClient *WSClient) {
 			log.Println("Connected to server!")
 
 		case "send":
-			wsClient.sendEncrypted(msg.Value)
+			wsClient.handleTUIMessage(msg.Value)
 		}
 	}
 }
