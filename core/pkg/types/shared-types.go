@@ -22,6 +22,7 @@ const (
 	MessageTypeSuccess         MessageType = "success"
 	MessageTypeError           MessageType = "error"
 	MessageTypeJoinedRoom      MessageType = "joined_room"
+	MessageTypeLeftRoom        MessageType = "left_room"
 	MessageTypeCreatedRoom     MessageType = "created_room"
 	MessageTypeDeletedRoom     MessageType = "deleted_room"
 	MessageTypeCurrentRooms    MessageType = "current_rooms"

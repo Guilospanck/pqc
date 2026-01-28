@@ -120,8 +120,8 @@ func (ws *Connection) ReadMessage() ([]byte, error) {
 	return msg, err
 }
 
-func (connection *Connection) RelayMessage(message, fromUsername, fromColor string) {
-	log.Printf("[Room %s] Sending %s from %s to %s\n", connection.Metadata.CurrentRoomId, message, fromUsername, connection.Metadata.Username)
+func (connection *Connection) RelayMessage(message string, fromMetadata types.WSMetadata) {
+	log.Printf("[Room %s] Sending %s from %s to %s\n", connection.Metadata.CurrentRoomId, message, fromMetadata.Username, connection.Metadata.Username)
 
 	nonce, ciphertext, err := cryptography.EncryptMessage(connection.Keys.SharedSecret, []byte(message))
 	if err != nil {
@@ -133,7 +133,7 @@ func (connection *Connection) RelayMessage(message, fromUsername, fromColor stri
 		Type:     types.MessageTypeEncryptedMessage,
 		Value:    ciphertext,
 		Nonce:    nonce,
-		Metadata: types.WSMetadata{Username: fromUsername, Color: fromColor},
+		Metadata: fromMetadata,
 	}
 	jsonMsg := msg.Marshal()
 

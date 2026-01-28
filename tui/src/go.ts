@@ -148,6 +148,9 @@ export function setupGo(): void {
           }
           break;
         }
+        case "left_room": {
+          break;
+        }
         case "created_room": {
           let room: RoomInfo;
           try {

@@ -155,22 +155,27 @@ func (srv *WSServer) handleConnectionMetadata(headers http.Header, connection *w
 		Username:      username,
 		Color:         color,
 		CurrentRoomId: types.RoomId(currentRoomId),
+		UserId:        connection.ID,
 	}
 
 	connection.Metadata = &metadata
 }
 
-func (srv *WSServer) joinRoomById(roomId types.RoomId, connection *ws.Connection) {
+func (srv *WSServer) joinRoomById(roomId types.RoomId, connection *ws.Connection) *ws.Room {
 	if room, roomExists := srv.rooms[roomId]; roomExists {
 		room.AddConnection(connection)
 
 		// point user to new room
 		connection.Metadata.CurrentRoomId = room.ID
+
+		return room
 	}
+
+	return nil
 }
 
 // TODO: change the message if a user tries to leave a room he is not in.
-func (srv *WSServer) leaveRoomById(roomId types.RoomId, connection *ws.Connection) {
+func (srv *WSServer) leaveRoomById(roomId types.RoomId, connection *ws.Connection) *ws.Room {
 	if room, roomExists := srv.rooms[roomId]; roomExists {
 		room.RemoveConnection(connection.ID)
 
@@ -178,37 +183,43 @@ func (srv *WSServer) leaveRoomById(roomId types.RoomId, connection *ws.Connectio
 		if isConnectionCurrentlyInRoom {
 			srv.joinRoomById(utils.LOBBY_ROOM, connection)
 		}
+
+		return room
 	}
+
+	return nil
 }
 
-func (srv *WSServer) joinRoomByName(name string, connection *ws.Connection) error {
+func (srv *WSServer) joinRoomByName(name string, connection *ws.Connection) (*ws.Room, error) {
 	for _, room := range srv.rooms {
 		if room.Name == name {
-			srv.joinRoomById(room.ID, connection)
-			return nil
+			room := srv.joinRoomById(room.ID, connection)
+			return room, nil
 		}
 	}
 
-	return fmt.Errorf("could not find a room named \"%s\"", name)
+	return nil, fmt.Errorf("could not find a room named \"%s\"", name)
 }
 
-func (srv *WSServer) leaveRoomByName(name string, connection *ws.Connection) error {
+func (srv *WSServer) leaveRoomByName(name string, connection *ws.Connection) (*ws.Room, error) {
 	for _, room := range srv.rooms {
 		if room.Name == name {
-			srv.leaveRoomById(room.ID, connection)
-			return nil
+			room := srv.leaveRoomById(room.ID, connection)
+			return room, nil
 		}
 	}
 
-	return fmt.Errorf("could not find a room named \"%s\"", name)
+	return nil, fmt.Errorf("could not find a room named \"%s\"", name)
 }
 
-func (srv *WSServer) createRoom(name string, creator types.ClientId) {
+func (srv *WSServer) createRoom(name string, creator types.ClientId) *ws.Room {
 	room := ws.NewRoom(creator, name)
 	srv.rooms[room.ID] = &room
+
+	return &room
 }
 
-func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) error {
+func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) (*ws.Room, error) {
 	var room *ws.Room = nil
 
 	for _, r := range srv.rooms {
@@ -219,16 +230,16 @@ func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) er
 	}
 
 	if room == nil {
-		return fmt.Errorf("could not delete the room named \"%s\" because it does not exist", name)
+		return nil, fmt.Errorf("could not delete the room named \"%s\" because it does not exist", name)
 	}
 
 	if room.CreatedBy != connection.ID {
-		return fmt.Errorf("could not delete the room named \"%s\" because you do not have permissions to do that", name)
+		return room, fmt.Errorf("could not delete the room named \"%s\" because you do not have permissions to do that", name)
 	}
 
 	isConnectionCurrentlyInRoom := connection.Metadata.CurrentRoomId == room.ID
 	if len(room.Connections) > 1 || len(room.Connections) == 1 && !isConnectionCurrentlyInRoom {
-		return fmt.Errorf("cannot delete the room as it has other participants there.")
+		return room, fmt.Errorf("cannot delete the room as it has other participants there.")
 	}
 
 	if isConnectionCurrentlyInRoom {
@@ -237,7 +248,7 @@ func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) er
 
 	delete(srv.rooms, room.ID)
 
-	return nil
+	return room, nil
 }
 
 func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
@@ -266,7 +277,7 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 	wsMessage := ws.WSMessage{
 		Value:    nil,
 		Nonce:    nil,
-		Metadata: types.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color, CurrentRoomId: connection.Metadata.CurrentRoomId},
+		Metadata: types.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color, CurrentRoomId: connection.Metadata.CurrentRoomId, UserId: connection.ID},
 	}
 
 	sendMessageToClient := func() {
@@ -313,55 +324,111 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 	case types.MessageTypeJoinRoom:
 		oldRoom := connection.Metadata.CurrentRoomId
 		roomName := string(msg.Value)
-		if err := srv.joinRoomByName(roomName, connection); err != nil {
+
+		room, err := srv.joinRoomByName(roomName, connection)
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+
+		if err != nil {
 			wsMessage.Type = types.MessageTypeError
 			wsMessage.Value = []byte(err.Error())
-		} else {
-			wsMessage.Type = types.MessageTypeSuccess
-			wsMessage.Value = fmt.Appendf(nil, "Joined room %s", roomName)
-			log.Printf("%s joined room %s", connection.Metadata.Username, roomName)
-
-			// Remove connection from old room
-			log.Printf("Removing %s from old room %s\n", connection.Metadata.Username, oldRoom)
-			srv.leaveRoomById(oldRoom, connection)
+			sendMessageToClient()
+			return
 		}
 
+		wsMessage.Type = types.MessageTypeSuccess
+		wsMessage.Value = fmt.Appendf(nil, "Joined room %s", roomName)
+		log.Printf("%s joined room %s", connection.Metadata.Username, roomName)
+
+		// Remove connection from old room
+		log.Printf("Removing %s from old room %s\n", connection.Metadata.Username, oldRoom)
+		srv.leaveRoomById(oldRoom, connection)
+
+		// send success system message
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+		sendMessageToClient()
+
+		// send `joined` message
+		wsMessage.Type = types.MessageTypeJoinedRoom
+		marshalledRoom, err := json.Marshal(room)
+		if err != nil {
+			log.Printf("Error trying to marshall room in the `MessageTypeJoinRoom` event: %s\n", err.Error())
+		}
+		wsMessage.Value = marshalledRoom
 		sendMessageToClient()
 
 	case types.MessageTypeDeleteRoom:
 		roomName := string(msg.Value)
-		if err := srv.deleteRoomByName(roomName, connection); err != nil {
+
+		room, err := srv.deleteRoomByName(roomName, connection)
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+
+		if err != nil {
 			wsMessage.Type = types.MessageTypeError
 			wsMessage.Value = []byte(err.Error())
-		} else {
-			wsMessage.Type = types.MessageTypeSuccess
-			wsMessage.Value = fmt.Appendf(nil, "Deleted room %s", roomName)
+			sendMessageToClient()
+			return
 		}
 
+		// Send success system message
+		wsMessage.Type = types.MessageTypeSuccess
+		wsMessage.Value = fmt.Appendf(nil, "Deleted room %s", roomName)
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+		sendMessageToClient()
+
+		// send `deleted` message
+		wsMessage.Type = types.MessageTypeDeletedRoom
+		marshalledRoom, err := json.Marshal(room)
+		if err != nil {
+			log.Printf("Error trying to marshall room in the `MessageTypeDeleteRoom` event: %s\n", err.Error())
+		}
+		wsMessage.Value = marshalledRoom
 		sendMessageToClient()
 
 	case types.MessageTypeCreateRoom:
 		roomName := string(msg.Value)
-		srv.createRoom(roomName, connection.ID)
+
+		room := srv.createRoom(roomName, connection.ID)
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+
+		// send success message
 		wsMessage.Type = types.MessageTypeSuccess
 		wsMessage.Value = fmt.Appendf(nil, "Created room %s", roomName)
+		sendMessageToClient()
 
-		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+		// send `created` message
+		wsMessage.Type = types.MessageTypeCreatedRoom
+		marshalledRoom, err := json.Marshal(room)
+		if err != nil {
+			log.Printf("Error trying to marshall room in the `MessageTypeCreateRoom` event: %s\n", err.Error())
+		}
+		wsMessage.Value = marshalledRoom
 		sendMessageToClient()
 
 	case types.MessageTypeLeaveRoom:
 		roomName := string(msg.Value)
-		if err := srv.leaveRoomByName(roomName, connection); err != nil {
+
+		room, err := srv.leaveRoomByName(roomName, connection)
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+
+		if err != nil {
 			wsMessage.Type = types.MessageTypeError
 			wsMessage.Value = []byte(err.Error())
-		} else {
-			wsMessage.Type = types.MessageTypeSuccess
-			wsMessage.Value = fmt.Appendf(nil, "Left room %s", roomName)
+			sendMessageToClient()
+			return
 		}
 
-		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+		// send success message
+		wsMessage.Type = types.MessageTypeSuccess
+		wsMessage.Value = fmt.Appendf(nil, "Left room %s", roomName)
+		sendMessageToClient()
+
+		// send `left` message
+		wsMessage.Type = types.MessageTypeLeftRoom
+		marshalledRoom, err := json.Marshal(room)
+		if err != nil {
+			log.Printf("Error trying to marshall room in the `MessageTypeLeaveRoom` event: %s\n", err.Error())
+		}
+		wsMessage.Value = marshalledRoom
 		sendMessageToClient()
 
 	default:
@@ -389,7 +456,7 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 			Type:     types.MessageTypeUserLeftChat,
 			Value:    nil,
 			Nonce:    nil,
-			Metadata: types.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
+			Metadata: types.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color, UserId: connection.ID, CurrentRoomId: connection.Metadata.CurrentRoomId},
 		}
 		leftJsonMsg := leftMsg.Marshal()
 
@@ -409,7 +476,7 @@ func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
 	users := make([]types.WSMetadata, 0, len(connections))
 
 	for _, c := range connections {
-		users = append(users, types.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color, CurrentRoomId: c.Metadata.CurrentRoomId})
+		users = append(users, types.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color, CurrentRoomId: c.Metadata.CurrentRoomId, UserId: c.ID})
 	}
 
 	marshalledUsers, err := json.Marshal(users)
@@ -422,7 +489,7 @@ func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
 		Type:     types.MessageTypeCurrentUsers,
 		Value:    marshalledUsers,
 		Nonce:    nil,
-		Metadata: types.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color, CurrentRoomId: newUser.Metadata.CurrentRoomId},
+		Metadata: types.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color, CurrentRoomId: newUser.Metadata.CurrentRoomId, UserId: newUser.ID},
 	}
 	jsonMsg := msg.Marshal()
 
@@ -475,6 +542,6 @@ func (srv *WSServer) sendEncryptedMessageToAllConnectionsInTheSameRoom(client *w
 
 		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Metadata.Username, string(decryptedMessage))
 
-		c.RelayMessage(msgWithPublicKey, client.Metadata.Username, client.Metadata.Color)
+		c.RelayMessage(msgWithPublicKey, *client.Metadata)
 	}
 }

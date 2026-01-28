@@ -131,7 +131,7 @@ func (client *WSClient) connectToWSServer() error {
 
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
-	client.conn.Metadata = &types.WSMetadata{Username: username, Color: color}
+	client.conn.Metadata = &types.WSMetadata{Username: username, Color: color, UserId: client.conn.ID, CurrentRoomId: client.currentRoomID}
 	// Tell UI we're connected with some username and color
 	ui.EmitToUI(types.MessageTypeConnected, username, *client.conn.Metadata)
 
@@ -326,6 +326,7 @@ func (client *WSClient) sendMessageToServer(tuiMessage string, msgType types.Mes
 			Username:      client.conn.Metadata.Username,
 			Color:         client.conn.Metadata.Color,
 			CurrentRoomId: client.conn.Metadata.CurrentRoomId,
+			UserId:        client.conn.ID,
 		},
 	}
 
@@ -443,6 +444,22 @@ func (client *WSClient) handleServerMessage(msg ws.WSMessage, connection *ws.Con
 		metadata := msg.Metadata
 		metadata.Color = "#F00"
 		ui.EmitToUI(types.MessageTypeError, string(value), metadata)
+	case types.MessageTypeJoinedRoom:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeJoinedRoom, string(value), metadata)
+	case types.MessageTypeLeftRoom:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeLeftRoom, string(value), metadata)
+	case types.MessageTypeCreatedRoom:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeCreatedRoom, string(value), metadata)
+	case types.MessageTypeDeletedRoom:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeDeletedRoom, string(value), metadata)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}
