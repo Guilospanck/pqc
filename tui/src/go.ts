@@ -181,13 +181,13 @@ export function setupGo(): void {
           }
           break;
         }
-        case "current_rooms": {
+        case "available_rooms": {
           let rooms: Array<RoomInfo> = [];
           try {
             rooms = JSON.parse(message.value);
           } catch (err) {
             console.error(
-              "Could not parse rooms from `current_rooms` event. Error: ",
+              "Could not parse rooms from `available_rooms` event. Error: ",
               err,
             );
           }

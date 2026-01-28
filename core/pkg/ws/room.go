@@ -12,7 +12,7 @@ type Room struct {
 	Name        string
 	CreatedBy   types.ClientId
 	Connections map[types.ClientId]*Connection
-	createdAt   time.Time
+	CreatedAt   time.Time
 }
 
 func NewLobbyRoom() Room {
@@ -20,7 +20,7 @@ func NewLobbyRoom() Room {
 		ID:          types.RoomId(utils.LOBBY_ROOM),
 		Name:        utils.LOBBY_ROOM,
 		CreatedBy:   utils.SYSTEM,
-		createdAt:   time.Now(),
+		CreatedAt:   time.Now(),
 		Connections: make(map[types.ClientId]*Connection),
 	}
 }
@@ -30,7 +30,7 @@ func NewRoom(creator types.ClientId, name string) Room {
 		ID:          types.RoomId(utils.UUID()),
 		Name:        name,
 		CreatedBy:   creator,
-		createdAt:   time.Now(),
+		CreatedAt:   time.Now(),
 		Connections: make(map[types.ClientId]*Connection),
 	}
 }

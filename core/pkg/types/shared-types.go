@@ -25,7 +25,7 @@ const (
 	MessageTypeLeftRoom        MessageType = "left_room"
 	MessageTypeCreatedRoom     MessageType = "created_room"
 	MessageTypeDeletedRoom     MessageType = "deleted_room"
-	MessageTypeCurrentRooms    MessageType = "current_rooms"
+	MessageTypeAvailableRooms  MessageType = "available_rooms"
 
 	// Go <-> Go (ws)
 	MessageTypeExchangeKeys     MessageType = "exchange_keys"

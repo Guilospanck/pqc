@@ -23,7 +23,7 @@ export const MessageTypeJoinedRoom = "joined_room";
 export const MessageTypeLeftRoom = "left_room";
 export const MessageTypeCreatedRoom = "created_room";
 export const MessageTypeDeletedRoom = "deleted_room";
-export const MessageTypeCurrentRooms = "current_rooms";
+export const MessageTypeAvailableRooms = "available_rooms";
 /**
  * Go <-> Go (ws)
  */
@@ -38,7 +38,7 @@ export const MessageTypeDeleteRoom = "delete_room";
  */
 export const MessageTypeConnect = "connect";
 export const MessageTypeSend = "send";
-export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeSuccess | typeof MessageTypeError | typeof MessageTypeJoinedRoom | typeof MessageTypeLeftRoom | typeof MessageTypeCreatedRoom | typeof MessageTypeDeletedRoom | typeof MessageTypeCurrentRooms | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeJoinRoom | typeof MessageTypeLeaveRoom | typeof MessageTypeCreateRoom | typeof MessageTypeDeleteRoom | typeof MessageTypeConnect | typeof MessageTypeSend;
+export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeSuccess | typeof MessageTypeError | typeof MessageTypeJoinedRoom | typeof MessageTypeLeftRoom | typeof MessageTypeCreatedRoom | typeof MessageTypeDeletedRoom | typeof MessageTypeAvailableRooms | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeJoinRoom | typeof MessageTypeLeaveRoom | typeof MessageTypeCreateRoom | typeof MessageTypeDeleteRoom | typeof MessageTypeConnect | typeof MessageTypeSend;
 export type ClientId = string;
 export type RoomId = string;
 export interface WSMetadata {

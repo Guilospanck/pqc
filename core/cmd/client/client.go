@@ -460,6 +460,10 @@ func (client *WSClient) handleServerMessage(msg ws.WSMessage, connection *ws.Con
 		value := msg.Value
 		metadata := msg.Metadata
 		ui.EmitToUI(types.MessageTypeDeletedRoom, string(value), metadata)
+	case types.MessageTypeAvailableRooms:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeAvailableRooms, string(value), metadata)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}

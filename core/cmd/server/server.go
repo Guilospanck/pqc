@@ -72,6 +72,9 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	// Update this newly connected user with info regarding all connected users
 	srv.informUserOfAllCurrentUsers(&connection)
 
+	// Update this newly connected user with info regarding all available rooms
+	srv.informUserOfAllAvailableRooms(&connection)
+
 	// Send to other clients the event of a newly connected client
 	srv.informRoomOfNewUser(&connection)
 
@@ -289,6 +292,8 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		}
 	}
 
+	// TODO: improve the handling of room commands code. IT can be extracted into a better function
+	// TODO: ALSO: when something like a new room is created/deleted, we must fanout to everyone in the SERVER
 	switch msg.Type {
 	case types.MessageTypeExchangeKeys:
 		// Encapsulate ciphertext with the public key from client
@@ -495,6 +500,37 @@ func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
 
 	if err = newUser.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Println("Problem sending message to the client regarding the currently connected users: ", err)
+	}
+}
+
+func (srv *WSServer) informUserOfAllAvailableRooms(newUser *ws.Connection) {
+	srv.mu.RLock()
+	defer srv.mu.RUnlock()
+
+	rooms := srv.rooms
+
+	availableRooms := make([]types.RoomInfo, 0, len(rooms))
+
+	for _, r := range rooms {
+		availableRooms = append(availableRooms, types.RoomInfo{ID: r.ID, Name: r.Name, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt})
+	}
+
+	marshalledRooms, err := json.Marshal(availableRooms)
+	if err != nil {
+		log.Println("Could not marshal available rooms to inform newly connected user")
+		return
+	}
+
+	msg := ws.WSMessage{
+		Type:     types.MessageTypeAvailableRooms,
+		Value:    marshalledRooms,
+		Nonce:    nil,
+		Metadata: types.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color, CurrentRoomId: newUser.Metadata.CurrentRoomId, UserId: newUser.ID},
+	}
+	jsonMsg := msg.Marshal()
+
+	if err = newUser.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
+		log.Println("Problem sending message to the client regarding the currently available rooms: ", err)
 	}
 }
 
