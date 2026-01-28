@@ -3,10 +3,11 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"github.com/Guilospanck/pqc/core/pkg/logger"
-	"github.com/Guilospanck/pqc/core/pkg/ui"
 	"log"
 	"os"
+
+	"github.com/Guilospanck/pqc/core/pkg/logger"
+	"github.com/Guilospanck/pqc/core/pkg/types"
 )
 
 func main() {
@@ -26,7 +27,7 @@ func readFromStdin(wsClient *WSClient) {
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
-		var msg ui.UIMessage
+		var msg types.UIMessage
 		if err := json.Unmarshal(line, &msg); err != nil {
 			log.Println("Error unmarshalling message from stdin: ", err)
 			continue

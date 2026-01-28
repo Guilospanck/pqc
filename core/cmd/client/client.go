@@ -27,7 +27,7 @@ type WSClient struct {
 	cancelFunc      context.CancelFunc
 	isConnected     bool
 	deadLetterQueue chan string // we save non-delivered non-encrypted messages here
-	currentRoomID   ws.RoomId
+	currentRoomID   types.RoomId
 }
 
 func NewClient() *WSClient {
@@ -38,7 +38,7 @@ func NewClient() *WSClient {
 		reconnect:       make(chan struct{}, 1),
 		isConnected:     false,
 		deadLetterQueue: make(chan string, 10),
-		currentRoomID:   ws.RoomId(""), // tbd on connection
+		currentRoomID:   types.RoomId(""), // tbd on connection
 	}
 }
 
@@ -57,9 +57,9 @@ func (client *WSClient) connectionManager() {
 		attempts := client.attempts.Load()
 
 		if attempts == int64(1) {
-			ui.EmitToUI(types.MessageTypeDisconnected, string(client.conn.Metadata.Username), client.conn.Metadata.Color)
+			ui.EmitToUI(types.MessageTypeDisconnected, string(client.conn.Metadata.Username), *client.conn.Metadata)
 		} else {
-			ui.EmitToUI(types.MessageTypeReconnecting, string(client.conn.Metadata.Username), client.conn.Metadata.Color)
+			ui.EmitToUI(types.MessageTypeReconnecting, string(client.conn.Metadata.Username), *client.conn.Metadata)
 		}
 
 		if attempts >= int64(MAX_ATTEMPTS) {
@@ -98,7 +98,7 @@ func (client *WSClient) connectToWSServer() error {
 	if client.conn.Metadata.Username != "" {
 		requestHeader.Set("username", client.conn.Metadata.Username)
 	}
-	if client.currentRoomID != ws.RoomId("") {
+	if client.currentRoomID != types.RoomId("") {
 		requestHeader.Set("roomId", string(client.currentRoomID))
 	}
 
@@ -131,9 +131,9 @@ func (client *WSClient) connectToWSServer() error {
 
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
-	client.conn.Metadata = &ws.WSMetadata{Username: username, Color: color}
+	client.conn.Metadata = &types.WSMetadata{Username: username, Color: color}
 	// Tell UI we're connected with some username and color
-	ui.EmitToUI(types.MessageTypeConnected, username, color)
+	ui.EmitToUI(types.MessageTypeConnected, username, *client.conn.Metadata)
 
 	if client.conn.Keys.Public == nil {
 		if err := client.generateKeys(); err != nil {
@@ -313,13 +313,16 @@ func (client *WSClient) handleCommand(input string) {
 }
 
 func (client *WSClient) sendSystemMessage(message string) {
-	ui.EmitToUI(types.MessageTypeMessage, message, "#F00")
+	metadata := client.conn.Metadata
+	metadata.Color = "#F00"
+
+	ui.EmitToUI(types.MessageTypeMessage, message, *metadata)
 }
 
 func (client *WSClient) sendMessageToServer(tuiMessage string, msgType types.MessageType) {
 	wsMessage := ws.WSMessage{
 		Type: msgType,
-		Metadata: ws.WSMetadata{
+		Metadata: types.WSMetadata{
 			Username:      client.conn.Metadata.Username,
 			Color:         client.conn.Metadata.Color,
 			CurrentRoomId: client.conn.Metadata.CurrentRoomId,
@@ -404,7 +407,7 @@ func (client *WSClient) handleServerMessage(msg ws.WSMessage, connection *ws.Con
 
 		// Now the client also have the shared secret
 		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
-		ui.EmitToUI(types.MessageTypeKeysExchanged, connection.Metadata.Username, connection.Metadata.Color)
+		ui.EmitToUI(types.MessageTypeKeysExchanged, connection.Metadata.Username, *connection.Metadata)
 
 		close(connection.KeysExchanged)
 
@@ -419,23 +422,27 @@ func (client *WSClient) handleServerMessage(msg ws.WSMessage, connection *ws.Con
 			return
 		}
 
-		ui.EmitToUI(types.MessageTypeMessage, string(decrypted), msg.Metadata.Color)
+		ui.EmitToUI(types.MessageTypeMessage, string(decrypted), msg.Metadata)
 	case types.MessageTypeUserEnteredChat:
 		metadata := msg.Metadata
-		ui.EmitToUI(types.MessageTypeUserEnteredChat, string(metadata.Username), metadata.Color)
+		ui.EmitToUI(types.MessageTypeUserEnteredChat, string(metadata.Username), metadata)
 	case types.MessageTypeUserLeftChat:
 		metadata := msg.Metadata
-		ui.EmitToUI(types.MessageTypeUserLeftChat, string(metadata.Username), metadata.Color)
+		ui.EmitToUI(types.MessageTypeUserLeftChat, string(metadata.Username), metadata)
 	case types.MessageTypeCurrentUsers:
 		metadata := msg.Metadata
 		value := msg.Value
-		ui.EmitToUI(types.MessageTypeCurrentUsers, string(value), metadata.Color)
+		ui.EmitToUI(types.MessageTypeCurrentUsers, string(value), metadata)
 	case types.MessageTypeSuccess:
 		value := msg.Value
-		ui.EmitToUI(types.MessageTypeSuccess, string(value), "#0F0")
+		metadata := msg.Metadata
+		metadata.Color = "#0F0"
+		ui.EmitToUI(types.MessageTypeSuccess, string(value), metadata)
 	case types.MessageTypeError:
 		value := msg.Value
-		ui.EmitToUI(types.MessageTypeError, string(value), "#F00")
+		metadata := msg.Metadata
+		metadata.Color = "#F00"
+		ui.EmitToUI(types.MessageTypeError, string(value), metadata)
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}

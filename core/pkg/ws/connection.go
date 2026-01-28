@@ -18,13 +18,11 @@ type WriteMessageRequest struct {
 	err     chan error
 }
 
-type ClientId string
-
 type Connection struct {
-	ID       ClientId
+	ID       types.ClientId
 	Keys     cryptography.Keys
 	Conn     *websocket.Conn
-	Metadata *WSMetadata
+	Metadata *types.WSMetadata
 
 	WriteMessageReq chan WriteMessageRequest
 
@@ -36,10 +34,10 @@ type Connection struct {
 
 func NewEmptyConnection() Connection {
 	return Connection{
-		ID:       ClientId(utils.UUID()),
+		ID:       types.ClientId(utils.UUID()),
 		Keys:     cryptography.Keys{},
 		Conn:     nil,
-		Metadata: &WSMetadata{},
+		Metadata: &types.WSMetadata{},
 
 		WriteMessageReq: make(chan WriteMessageRequest, 10),
 
@@ -135,7 +133,7 @@ func (connection *Connection) RelayMessage(message, fromUsername, fromColor stri
 		Type:     types.MessageTypeEncryptedMessage,
 		Value:    ciphertext,
 		Nonce:    nonce,
-		Metadata: WSMetadata{Username: fromUsername, Color: fromColor},
+		Metadata: types.WSMetadata{Username: fromUsername, Color: fromColor},
 	}
 	jsonMsg := msg.Marshal()
 

@@ -19,6 +19,10 @@ export const MessageTypeUserLeftChat = "user_left_chat";
 export const MessageTypeCurrentUsers = "current_users";
 export const MessageTypeSuccess = "success";
 export const MessageTypeError = "error";
+export const MessageTypeJoinedRoom = "joined_room";
+export const MessageTypeCreatedRoom = "created_room";
+export const MessageTypeDeletedRoom = "deleted_room";
+export const MessageTypeCurrentRooms = "current_rooms";
 /**
  * Go <-> Go (ws)
  */
@@ -33,4 +37,23 @@ export const MessageTypeDeleteRoom = "delete_room";
  */
 export const MessageTypeConnect = "connect";
 export const MessageTypeSend = "send";
-export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeSuccess | typeof MessageTypeError | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeJoinRoom | typeof MessageTypeLeaveRoom | typeof MessageTypeCreateRoom | typeof MessageTypeDeleteRoom | typeof MessageTypeConnect | typeof MessageTypeSend;
+export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeSuccess | typeof MessageTypeError | typeof MessageTypeJoinedRoom | typeof MessageTypeCreatedRoom | typeof MessageTypeDeletedRoom | typeof MessageTypeCurrentRooms | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeJoinRoom | typeof MessageTypeLeaveRoom | typeof MessageTypeCreateRoom | typeof MessageTypeDeleteRoom | typeof MessageTypeConnect | typeof MessageTypeSend;
+export type ClientId = string;
+export type RoomId = string;
+export interface WSMetadata {
+  userId: ClientId;
+  username: string;
+  color: string;
+  currentRoomId: RoomId;
+}
+export interface UIMessage {
+  type: MessageType;
+  value: string;
+  metadata: WSMetadata;
+}
+export interface RoomInfo {
+  ID: RoomId;
+  Name: string;
+  CreatedBy: ClientId;
+  CreatedAt: string;
+}

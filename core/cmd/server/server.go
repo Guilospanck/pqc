@@ -18,8 +18,8 @@ import (
 )
 
 type WSServer struct {
-	rooms         map[ws.RoomId]*ws.Room
-	connections   map[ws.ClientId]*ws.Connection
+	rooms         map[types.RoomId]*ws.Room
+	connections   map[types.ClientId]*ws.Connection
 	usedUsernames []string
 	mu            sync.RWMutex
 	ctx           context.Context
@@ -27,14 +27,14 @@ type WSServer struct {
 
 func NewServer(ctx context.Context) *WSServer {
 	// create lobby room
-	rooms := make(map[ws.RoomId]*ws.Room)
+	rooms := make(map[types.RoomId]*ws.Room)
 
 	lobbyRoom := ws.NewLobbyRoom()
 	rooms[lobbyRoom.ID] = &lobbyRoom
 
 	return &WSServer{
 		rooms:         rooms,
-		connections:   make(map[ws.ClientId]*ws.Connection),
+		connections:   make(map[types.ClientId]*ws.Connection),
 		ctx:           ctx,
 		usedUsernames: make([]string, 0),
 	}
@@ -94,7 +94,7 @@ func (srv *WSServer) addConnection(connection *ws.Connection) {
 	srv.joinRoomById(currentRoomId, connection)
 }
 
-func (srv *WSServer) removeConnection(id ws.ClientId) {
+func (srv *WSServer) removeConnection(id types.ClientId) {
 	// Remove client from rooms
 	for _, r := range srv.rooms {
 		r.RemoveConnection(id)
@@ -118,7 +118,7 @@ func (srv *WSServer) getRandomUsername() string {
 	return generatedUsername
 }
 
-func (srv *WSServer) upgradeWSConnection(w http.ResponseWriter, r *http.Request, connectionMetadata ws.WSMetadata) (*websocket.Conn, error) {
+func (srv *WSServer) upgradeWSConnection(w http.ResponseWriter, r *http.Request, connectionMetadata types.WSMetadata) (*websocket.Conn, error) {
 	upgrader := websocket.Upgrader{
 		// INFO: for production you should make this more restrictive
 		CheckOrigin: func(r *http.Request) bool {
@@ -151,16 +151,16 @@ func (srv *WSServer) handleConnectionMetadata(headers http.Header, connection *w
 		currentRoomId = utils.LOBBY_ROOM
 	}
 
-	metadata := ws.WSMetadata{
+	metadata := types.WSMetadata{
 		Username:      username,
 		Color:         color,
-		CurrentRoomId: ws.RoomId(currentRoomId),
+		CurrentRoomId: types.RoomId(currentRoomId),
 	}
 
 	connection.Metadata = &metadata
 }
 
-func (srv *WSServer) joinRoomById(roomId ws.RoomId, connection *ws.Connection) {
+func (srv *WSServer) joinRoomById(roomId types.RoomId, connection *ws.Connection) {
 	if room, roomExists := srv.rooms[roomId]; roomExists {
 		room.AddConnection(connection)
 
@@ -170,7 +170,7 @@ func (srv *WSServer) joinRoomById(roomId ws.RoomId, connection *ws.Connection) {
 }
 
 // TODO: change the message if a user tries to leave a room he is not in.
-func (srv *WSServer) leaveRoomById(roomId ws.RoomId, connection *ws.Connection) {
+func (srv *WSServer) leaveRoomById(roomId types.RoomId, connection *ws.Connection) {
 	if room, roomExists := srv.rooms[roomId]; roomExists {
 		room.RemoveConnection(connection.ID)
 
@@ -203,7 +203,7 @@ func (srv *WSServer) leaveRoomByName(name string, connection *ws.Connection) err
 	return fmt.Errorf("could not find a room named \"%s\"", name)
 }
 
-func (srv *WSServer) createRoom(name string, creator ws.ClientId) {
+func (srv *WSServer) createRoom(name string, creator types.ClientId) {
 	room := ws.NewRoom(creator, name)
 	srv.rooms[room.ID] = &room
 }
@@ -266,7 +266,7 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 	wsMessage := ws.WSMessage{
 		Value:    nil,
 		Nonce:    nil,
-		Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color, CurrentRoomId: connection.Metadata.CurrentRoomId},
+		Metadata: types.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color, CurrentRoomId: connection.Metadata.CurrentRoomId},
 	}
 
 	sendMessageToClient := func() {
@@ -389,7 +389,7 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 			Type:     types.MessageTypeUserLeftChat,
 			Value:    nil,
 			Nonce:    nil,
-			Metadata: ws.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
+			Metadata: types.WSMetadata{Username: connection.Metadata.Username, Color: connection.Metadata.Color},
 		}
 		leftJsonMsg := leftMsg.Marshal()
 
@@ -406,10 +406,10 @@ func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
 	room := srv.rooms[newUser.Metadata.CurrentRoomId]
 	connections := room.Connections
 
-	users := make([]ws.WSMetadata, 0, len(connections))
+	users := make([]types.WSMetadata, 0, len(connections))
 
 	for _, c := range connections {
-		users = append(users, ws.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color, CurrentRoomId: c.Metadata.CurrentRoomId})
+		users = append(users, types.WSMetadata{Username: c.Metadata.Username, Color: c.Metadata.Color, CurrentRoomId: c.Metadata.CurrentRoomId})
 	}
 
 	marshalledUsers, err := json.Marshal(users)
@@ -422,7 +422,7 @@ func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
 		Type:     types.MessageTypeCurrentUsers,
 		Value:    marshalledUsers,
 		Nonce:    nil,
-		Metadata: ws.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color, CurrentRoomId: newUser.Metadata.CurrentRoomId},
+		Metadata: types.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color, CurrentRoomId: newUser.Metadata.CurrentRoomId},
 	}
 	jsonMsg := msg.Marshal()
 
