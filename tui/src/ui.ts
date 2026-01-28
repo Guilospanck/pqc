@@ -8,7 +8,6 @@ import { ClearState, State } from "./singletons/state";
 import { COLORS } from "./constants";
 
 // Rooms area
-let currentRoomsText: TextRenderable | null = null;
 let roomsArea: ScrollBoxRenderable | null = null;
 
 // Users area
@@ -97,18 +96,6 @@ export function setupUI(): void {
     zIndex: 3,
     border: false,
   });
-
-  // Create rooms panel on the left
-  currentRoomsText = new TextRenderable(State.renderer, {
-    id: "currentRoomsText",
-    content: "Current rooms",
-    width: "100%",
-    height: "5%",
-    zIndex: 3,
-    fg: "#f0f6fc",
-    bg: "#0d1117",
-  });
-  roomsBox.add(currentRoomsText);
 
   // Create Rooms list area
   roomsArea = new ScrollBoxRenderable(State.renderer, {
