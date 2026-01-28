@@ -264,6 +264,7 @@ export function updateRoomsArea(): void {
     State.availableRooms.forEach((room) => {
       const userNode = TextNodeRenderable.fromNodes([
         TextNodeRenderable.fromString(room.Name, {
+          // TODO: fix, not working
           fg:
             State.currentRoom?.ID === room.ID
               ? CURRENT_ROOM_COLOR

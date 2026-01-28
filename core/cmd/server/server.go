@@ -164,6 +164,8 @@ func (srv *WSServer) handleConnectionMetadata(headers http.Header, connection *w
 	connection.Metadata = &metadata
 }
 
+// TODO: send message to everyone in the room informing of the current users.
+// TODO: do it as well when leaving the room
 func (srv *WSServer) joinRoomById(roomId types.RoomId, connection *ws.Connection) *ws.Room {
 	if room, roomExists := srv.rooms[roomId]; roomExists {
 		room.AddConnection(connection)
@@ -292,8 +294,12 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		}
 	}
 
+	sendMessageAllInServer := func() {
+		jsonMsg := wsMessage.Marshal()
+		srv.sendMessageToEveryoneInTheServer(jsonMsg)
+	}
+
 	// TODO: improve the handling of room commands code. IT can be extracted into a better function
-	// TODO: ALSO: when something like a new room is created/deleted, we must fanout to everyone in the SERVER
 	switch msg.Type {
 	case types.MessageTypeExchangeKeys:
 		// Encapsulate ciphertext with the public key from client
@@ -387,7 +393,7 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 			log.Printf("Error trying to marshall room in the `MessageTypeDeleteRoom` event: %s\n", err.Error())
 		}
 		wsMessage.Value = marshalledRoom
-		sendMessageToClient()
+		sendMessageAllInServer()
 
 	case types.MessageTypeCreateRoom:
 		roomName := string(msg.Value)
@@ -407,7 +413,7 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 			log.Printf("Error trying to marshall room in the `MessageTypeCreateRoom` event: %s\n", err.Error())
 		}
 		wsMessage.Value = marshalledRoom
-		sendMessageToClient()
+		sendMessageAllInServer()
 
 	case types.MessageTypeLeaveRoom:
 		roomName := string(msg.Value)
@@ -579,5 +585,14 @@ func (srv *WSServer) sendEncryptedMessageToAllConnectionsInTheSameRoom(client *w
 		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Metadata.Username, string(decryptedMessage))
 
 		c.RelayMessage(msgWithPublicKey, *client.Metadata)
+	}
+}
+
+// Sends a message to all people in the server, regarding their rooms.
+func (srv *WSServer) sendMessageToEveryoneInTheServer(jsonMsg []byte) {
+	for _, c := range srv.connections {
+		if err := c.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
+			log.Printf("Error trying to inform the client %s about the message %s: %s\n", c.Metadata.Username, jsonMsg, err.Error())
+		}
 	}
 }
