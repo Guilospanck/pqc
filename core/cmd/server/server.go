@@ -73,7 +73,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	srv.informUserOfAllCurrentUsers(&connection)
 
 	// Send to other clients the event of a newly connected client
-	srv.fanOutUserEnteredChat(&connection)
+	srv.informRoomOfNewUser(&connection)
 
 	// Start read loop
 	srv.readAndHandleClientMessages(&connection)
@@ -249,6 +249,8 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 	}
 }
 
+// TODO: there's still a bug somewhere (not necessarily here), where the user, who was in lobby
+// but then tried deleting a room he created, can send messages to other people in the lobby, but can't receive them.
 func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connection) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
@@ -361,7 +363,7 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 	log.Printf(">>>> CURRENT ROOM for user %s: %s\n", connection.Metadata.Username, connection.Metadata.CurrentRoomId)
 }
 
-// Remove client from connections and broadcast user left event
+// Remove client from connections and broadcast user left event to its current room
 func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
@@ -421,8 +423,8 @@ func (srv *WSServer) informUserOfAllCurrentUsers(newUser *ws.Connection) {
 	}
 }
 
-// Inform people of a room that another user has connected.
-func (srv *WSServer) fanOutUserEnteredChat(connection *ws.Connection) {
+// Inform people of a room that a new user has connected.
+func (srv *WSServer) informRoomOfNewUser(connection *ws.Connection) {
 	srv.mu.RLock()
 	defer srv.mu.RUnlock()
 

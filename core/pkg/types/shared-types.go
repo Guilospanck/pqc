@@ -17,6 +17,8 @@ const (
 	MessageTypeUserEnteredChat MessageType = "user_entered_chat"
 	MessageTypeUserLeftChat    MessageType = "user_left_chat"
 	MessageTypeCurrentUsers    MessageType = "current_users"
+	MessageTypeSuccess         MessageType = "success"
+	MessageTypeError           MessageType = "error"
 
 	// Go <-> Go (ws)
 	MessageTypeExchangeKeys     MessageType = "exchange_keys"
@@ -25,8 +27,6 @@ const (
 	MessageTypeLeaveRoom        MessageType = "leave_room"
 	MessageTypeCreateRoom       MessageType = "create_room"
 	MessageTypeDeleteRoom       MessageType = "delete_room"
-	MessageTypeSuccess          MessageType = "success"
-	MessageTypeError            MessageType = "error"
 
 	// TUI to Go
 	MessageTypeConnect MessageType = "connect"

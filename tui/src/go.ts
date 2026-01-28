@@ -129,6 +129,14 @@ export function setupGo(): void {
           EventHandler().notify("update_users_panel", {});
           break;
         }
+        case "error":
+        case "success": {
+          addMessage({
+            ...tuiMessage,
+            text: message.value,
+          });
+          break;
+        }
       }
     }
   });

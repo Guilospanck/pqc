@@ -430,6 +430,12 @@ func (client *WSClient) handleServerMessage(msg ws.WSMessage, connection *ws.Con
 		metadata := msg.Metadata
 		value := msg.Value
 		ui.EmitToUI(types.MessageTypeCurrentUsers, string(value), metadata.Color)
+	case types.MessageTypeSuccess:
+		value := msg.Value
+		ui.EmitToUI(types.MessageTypeSuccess, string(value), "#0F0")
+	case types.MessageTypeError:
+		value := msg.Value
+		ui.EmitToUI(types.MessageTypeError, string(value), "#F00")
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}

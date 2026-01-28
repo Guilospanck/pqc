@@ -17,6 +17,8 @@ export const MessageTypeMessage = "message";
 export const MessageTypeUserEnteredChat = "user_entered_chat";
 export const MessageTypeUserLeftChat = "user_left_chat";
 export const MessageTypeCurrentUsers = "current_users";
+export const MessageTypeSuccess = "success";
+export const MessageTypeError = "error";
 /**
  * Go <-> Go (ws)
  */
@@ -26,11 +28,9 @@ export const MessageTypeJoinRoom = "join_room";
 export const MessageTypeLeaveRoom = "leave_room";
 export const MessageTypeCreateRoom = "create_room";
 export const MessageTypeDeleteRoom = "delete_room";
-export const MessageTypeSuccess = "success";
-export const MessageTypeError = "error";
 /**
  * TUI to Go
  */
 export const MessageTypeConnect = "connect";
 export const MessageTypeSend = "send";
-export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeJoinRoom | typeof MessageTypeLeaveRoom | typeof MessageTypeCreateRoom | typeof MessageTypeDeleteRoom | typeof MessageTypeSuccess | typeof MessageTypeError | typeof MessageTypeConnect | typeof MessageTypeSend;
+export type MessageType = typeof MessageTypeConnected | typeof MessageTypeDisconnected | typeof MessageTypeReconnecting | typeof MessageTypeKeysExchanged | typeof MessageTypeMessage | typeof MessageTypeUserEnteredChat | typeof MessageTypeUserLeftChat | typeof MessageTypeCurrentUsers | typeof MessageTypeSuccess | typeof MessageTypeError | typeof MessageTypeExchangeKeys | typeof MessageTypeEncryptedMessage | typeof MessageTypeJoinRoom | typeof MessageTypeLeaveRoom | typeof MessageTypeCreateRoom | typeof MessageTypeDeleteRoom | typeof MessageTypeConnect | typeof MessageTypeSend;
