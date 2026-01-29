@@ -58,9 +58,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-
 	connection.Conn = conn
-	srv.addConnection(&connection)
 
 	log.Printf("New connection: %s - %s\n", connection.Metadata.Username, connection.Metadata.Color)
 
@@ -68,6 +66,8 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	go connection.WriteLoop(srv.ctx)
 
 	<-connection.WriteLoopReady
+
+	srv.addConnection(&connection)
 
 	// Update this newly connected user with info regarding all available rooms
 	srv.informUserOfAllAvailableRooms(&connection)
