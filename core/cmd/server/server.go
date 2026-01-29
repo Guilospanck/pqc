@@ -334,6 +334,13 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		room, err := srv.joinRoomByName(roomName, connection)
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 
+		roomInfo := types.RoomInfo{
+			ID:        room.ID,
+			Name:      room.Name,
+			CreatedBy: room.CreatedBy,
+			CreatedAt: room.CreatedAt,
+		}
+
 		if err != nil {
 			wsMessage.Type = types.MessageTypeError
 			wsMessage.Value = []byte(err.Error())
@@ -355,11 +362,11 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 
 		// send `joined` message
 		wsMessage.Type = types.MessageTypeJoinedRoom
-		marshalledRoom, err := json.Marshal(room)
+		marshalledRoomInfo, err := json.Marshal(roomInfo)
 		if err != nil {
 			log.Printf("Error trying to marshall room in the `MessageTypeJoinRoom` event: %s\n", err.Error())
 		}
-		wsMessage.Value = marshalledRoom
+		wsMessage.Value = marshalledRoomInfo
 		sendMessageToClient()
 
 	case types.MessageTypeDeleteRoom:
@@ -367,6 +374,13 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 
 		room, err := srv.deleteRoomByName(roomName, connection)
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+
+		roomInfo := types.RoomInfo{
+			ID:        room.ID,
+			Name:      room.Name,
+			CreatedBy: room.CreatedBy,
+			CreatedAt: room.CreatedAt,
+		}
 
 		if err != nil {
 			wsMessage.Type = types.MessageTypeError
@@ -383,11 +397,11 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 
 		// send `deleted` message
 		wsMessage.Type = types.MessageTypeDeletedRoom
-		marshalledRoom, err := json.Marshal(room)
+		marshalledRoomInfo, err := json.Marshal(roomInfo)
 		if err != nil {
 			log.Printf("Error trying to marshall room in the `MessageTypeDeleteRoom` event: %s\n", err.Error())
 		}
-		wsMessage.Value = marshalledRoom
+		wsMessage.Value = marshalledRoomInfo
 		srv.sendMessageToEveryoneInTheServer(wsMessage)
 
 	case types.MessageTypeCreateRoom:
@@ -396,6 +410,13 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		room := srv.createRoom(roomName, connection.ID)
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 
+		roomInfo := types.RoomInfo{
+			ID:        room.ID,
+			Name:      room.Name,
+			CreatedBy: room.CreatedBy,
+			CreatedAt: room.CreatedAt,
+		}
+
 		// send success message
 		wsMessage.Type = types.MessageTypeSuccess
 		wsMessage.Value = fmt.Appendf(nil, "Created room %s", roomName)
@@ -403,11 +424,11 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 
 		// send `created` message
 		wsMessage.Type = types.MessageTypeCreatedRoom
-		marshalledRoom, err := json.Marshal(room)
+		marshalledRoomInfo, err := json.Marshal(roomInfo)
 		if err != nil {
 			log.Printf("Error trying to marshall room in the `MessageTypeCreateRoom` event: %s\n", err.Error())
 		}
-		wsMessage.Value = marshalledRoom
+		wsMessage.Value = marshalledRoomInfo
 		srv.sendMessageToEveryoneInTheServer(wsMessage)
 
 	case types.MessageTypeLeaveRoom:
@@ -415,6 +436,13 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 
 		room, err := srv.leaveRoomByName(roomName, connection)
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+
+		roomInfo := types.RoomInfo{
+			ID:        room.ID,
+			Name:      room.Name,
+			CreatedBy: room.CreatedBy,
+			CreatedAt: room.CreatedAt,
+		}
 
 		if err != nil {
 			wsMessage.Type = types.MessageTypeError
@@ -430,11 +458,11 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 
 		// send `left` message
 		wsMessage.Type = types.MessageTypeLeftRoom
-		marshalledRoom, err := json.Marshal(room)
+		marshalledRoomInfo, err := json.Marshal(roomInfo)
 		if err != nil {
 			log.Printf("Error trying to marshall room in the `MessageTypeLeaveRoom` event: %s\n", err.Error())
 		}
-		wsMessage.Value = marshalledRoom
+		wsMessage.Value = marshalledRoomInfo
 		sendMessageToClient()
 
 	default:
