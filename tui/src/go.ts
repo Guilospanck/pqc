@@ -100,7 +100,10 @@ export function setupGo(): void {
           });
           break;
         }
+        // TODO: check why, even though we receive the correct event
+        // upon joining a new room, the UI not being updated correctly
         case "user_entered_chat": {
+          console.log("ENTERED CHAT: ", message.metadata);
           addConnectedUser(message.metadata);
           EventHandler().notify("update_users_panel", {});
           break;
@@ -114,6 +117,9 @@ export function setupGo(): void {
           let users: Array<ConnectedUser> = [];
           try {
             users = JSON.parse(message.value);
+
+            addMultipleConnectedUsers(users);
+            EventHandler().notify("update_users_panel", {});
           } catch (err) {
             console.error(
               "Could not parse users from `current_users` event. Error: ",
@@ -121,8 +127,6 @@ export function setupGo(): void {
             );
           }
 
-          addMultipleConnectedUsers(users);
-          EventHandler().notify("update_users_panel", {});
           break;
         }
         case "error":
@@ -133,10 +137,13 @@ export function setupGo(): void {
           });
           break;
         }
+        // TODO: we're not receiving this upon connection...
         case "joined_room": {
           let room: RoomInfo;
           try {
             room = JSON.parse(message.value);
+
+            console.log("JOINED: ", room);
 
             updateCurrentRoom(room);
             EventHandler().notify("update_rooms_panel", {});

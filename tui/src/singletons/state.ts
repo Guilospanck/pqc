@@ -41,6 +41,7 @@ export function ClearState(): void {
 }
 
 export function addMultipleConnectedUsers(users: Array<ConnectedUser>): void {
+  State.connectedUsers = new Map();
   for (const user of users) {
     State.connectedUsers.set(user.userId, user);
   }
