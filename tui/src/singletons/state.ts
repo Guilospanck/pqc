@@ -10,7 +10,7 @@ type StateType = {
   messages: Array<TUIMessage>;
   currentInput: string;
   inputCursorPosition: number;
-  connectedUsers: Map<ConnectedUserKey, ConnectedUser>;
+  usersInRoom: Map<ConnectedUserKey, ConnectedUser>;
   availableRooms: Map<RoomId, RoomInfo>;
   currentRoom: RoomInfo | null;
   currentUser: ConnectedUser | null;
@@ -22,7 +22,7 @@ export const State: StateType = {
   messages: [],
   currentInput: "",
   inputCursorPosition: 0,
-  connectedUsers: new Map(),
+  usersInRoom: new Map(),
   availableRooms: new Map(),
   currentRoom: null,
   currentUser: null,
@@ -33,29 +33,29 @@ export function ClearState(): void {
   State.messages = [];
   State.currentInput = "";
   State.inputCursorPosition = 0;
-  State.connectedUsers = new Map();
+  State.usersInRoom = new Map();
   State.availableRooms = new Map();
   State.currentUser = null;
   State.currentRoom = null;
   State.isConnected = false;
 }
 
-export function addMultipleConnectedUsers(users: Array<ConnectedUser>): void {
-  State.connectedUsers = new Map();
+export function addMultipleUsersInRoom(users: Array<ConnectedUser>): void {
+  State.usersInRoom = new Map();
   for (const user of users) {
-    State.connectedUsers.set(user.userId, user);
+    if (user.userId === State.currentUser?.userId) continue;
+    State.usersInRoom.set(user.userId, user);
   }
 }
 
-export function addConnectedUser(user: ConnectedUser): void {
+export function addUserInRoom(user: ConnectedUser): void {
   if (user.userId === State.currentUser?.userId) return;
-  State.connectedUsers.set(user.userId, user);
+  State.usersInRoom.set(user.userId, user);
 }
 
-export function removeConnectedUser(user: ConnectedUser): void {
+export function removeUserFromRoom(user: ConnectedUser): void {
   if (user.userId === State.currentUser?.userId) return;
-
-  State.connectedUsers.delete(user.userId);
+  State.usersInRoom.delete(user.userId);
 }
 
 export function addMultipleRooms(rooms: Array<RoomInfo>): void {

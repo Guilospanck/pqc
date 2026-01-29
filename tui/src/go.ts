@@ -3,11 +3,11 @@ import type Stream from "node:stream";
 import { type ConnectedUser, type TUIMessage } from "./types/shared-types";
 import { EventHandler } from "./singletons/event-handler";
 import {
-  addConnectedUser,
-  addMultipleConnectedUsers,
+  addUserInRoom,
+  addMultipleUsersInRoom,
   addMultipleRooms,
   addRoom,
-  removeConnectedUser,
+  removeUserFromRoom,
   removeRoom,
   State,
   updateCurrentRoom,
@@ -50,6 +50,8 @@ export function setupGo(): void {
         color: message.metadata.color,
       };
 
+      console.log("TYPE: ", message.type);
+
       switch (message.type) {
         case "connected": {
           State.currentUser = message.metadata;
@@ -61,12 +63,12 @@ export function setupGo(): void {
           });
 
           EventHandler().notify("update_current_user_text", {});
-          EventHandler().notify("update_users_panel", {});
+          EventHandler().notify("update_users_area", {});
           break;
         }
         case "disconnected": {
           State.isConnected = false;
-          State.connectedUsers = new Map();
+          State.usersInRoom = new Map();
           State.currentUser = message.metadata;
 
           addMessage({
@@ -75,7 +77,7 @@ export function setupGo(): void {
           });
 
           EventHandler().notify("update_current_user_text", {});
-          EventHandler().notify("update_users_panel", {});
+          EventHandler().notify("update_users_area", {});
           break;
         }
         case "reconnecting": {
@@ -103,14 +105,13 @@ export function setupGo(): void {
         // TODO: check why, even though we receive the correct event
         // upon joining a new room, the UI not being updated correctly
         case "user_entered_chat": {
-          console.log("ENTERED CHAT: ", message.metadata);
-          addConnectedUser(message.metadata);
-          EventHandler().notify("update_users_panel", {});
+          addUserInRoom(message.metadata);
+          EventHandler().notify("update_users_area", {});
           break;
         }
         case "user_left_chat": {
-          removeConnectedUser(message.metadata);
-          EventHandler().notify("update_users_panel", {});
+          removeUserFromRoom(message.metadata);
+          EventHandler().notify("update_users_area", {});
           break;
         }
         case "current_users": {
@@ -118,8 +119,8 @@ export function setupGo(): void {
           try {
             users = JSON.parse(message.value);
 
-            addMultipleConnectedUsers(users);
-            EventHandler().notify("update_users_panel", {});
+            addMultipleUsersInRoom(users);
+            EventHandler().notify("update_users_area", {});
           } catch (err) {
             console.error(
               "Could not parse users from `current_users` event. Error: ",
@@ -143,10 +144,8 @@ export function setupGo(): void {
           try {
             room = JSON.parse(message.value);
 
-            console.log("JOINED: ", room);
-
             updateCurrentRoom(room);
-            EventHandler().notify("update_rooms_panel", {});
+            EventHandler().notify("update_rooms_area", {});
           } catch (err) {
             console.error(
               "Could not parse room from `joined_room` event. Error: ",
@@ -164,7 +163,7 @@ export function setupGo(): void {
             room = JSON.parse(message.value);
 
             addRoom(room);
-            EventHandler().notify("update_rooms_panel", {});
+            EventHandler().notify("update_rooms_area", {});
           } catch (err) {
             console.error(
               "Could not parse room from `created_room` event. Error: ",
@@ -179,7 +178,7 @@ export function setupGo(): void {
             room = JSON.parse(message.value);
 
             removeRoom(room);
-            EventHandler().notify("update_rooms_panel", {});
+            EventHandler().notify("update_rooms_area", {});
           } catch (err) {
             console.error(
               "Could not parse room from `deleted_room` event. Error: ",
@@ -200,7 +199,7 @@ export function setupGo(): void {
           }
 
           addMultipleRooms(rooms);
-          EventHandler().notify("update_rooms_panel", {});
+          EventHandler().notify("update_rooms_area", {});
           break;
         }
       }

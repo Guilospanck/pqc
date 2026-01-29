@@ -204,14 +204,14 @@ export function updateUsersArea(): void {
   );
   userNodes.push(TextNodeRenderable.fromString("\n\n"));
 
-  if (State.connectedUsers.size === 0) {
+  if (State.usersInRoom.size === 0) {
     userNodes.push(
       TextNodeRenderable.fromString("No users connected", {
         fg: "#8b949e",
       }),
     );
   } else {
-    State.connectedUsers.forEach((user) => {
+    State.usersInRoom.forEach((user) => {
       if (user.userId === State.currentUser?.userId) return;
 
       const userNode = TextNodeRenderable.fromNodes([
@@ -243,7 +243,7 @@ export function updateRoomsArea(): void {
   const roomNodes: TextNodeRenderable[] = [];
 
   const CURRENT_ROOM_COLOR = "#0F0";
-  const OTHER_ROOM_COLOR = "#00F";
+  const OTHER_ROOM_COLOR = "#808080";
 
   // Add header
   roomNodes.push(
@@ -254,7 +254,7 @@ export function updateRoomsArea(): void {
   );
   roomNodes.push(TextNodeRenderable.fromString("\n\n"));
 
-  if (State.connectedUsers.size === 0) {
+  if (State.usersInRoom.size === 0) {
     roomNodes.push(
       TextNodeRenderable.fromString("No available rooms", {
         fg: "#8b949e",
@@ -264,7 +264,6 @@ export function updateRoomsArea(): void {
     State.availableRooms.forEach((room) => {
       const userNode = TextNodeRenderable.fromNodes([
         TextNodeRenderable.fromString(room.Name, {
-          // TODO: fix, not working
           fg:
             State.currentRoom?.ID === room.ID
               ? CURRENT_ROOM_COLOR

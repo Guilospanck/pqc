@@ -79,14 +79,14 @@ function setupEventListeners(): void {
     },
   });
 
-  eventHandler.subscribe("update_users_panel", {
+  eventHandler.subscribe("update_users_area", {
     id: EVENT_HANDLER_ID,
     callback() {
       updateUsersArea();
     },
   });
 
-  eventHandler.subscribe("update_rooms_panel", {
+  eventHandler.subscribe("update_rooms_area", {
     id: EVENT_HANDLER_ID,
     callback() {
       updateRoomsArea();

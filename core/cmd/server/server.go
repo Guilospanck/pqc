@@ -47,6 +47,7 @@ func (srv *WSServer) startServer() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
+// TODO: the problem in the UI is that we are sending "user_left_chat" after "user_entered_chat" when a user joins a new room.
 func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	connection := ws.NewEmptyConnection()
 
@@ -70,7 +71,7 @@ func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	srv.addConnection(&connection)
 
 	// Update this newly connected user with info regarding all available rooms
-	srv.informUserOfAllAvailableRooms(&connection)
+	srv.informUserOfAllAvailableRooms(connection)
 
 	// Start read loop
 	srv.readAndHandleClientMessages(&connection)
@@ -163,13 +164,14 @@ func (srv *WSServer) handleConnectionMetadata(headers http.Header, connection *w
 	connection.Metadata = &metadata
 }
 
+// TODO: both in this and the leaveRoomById: trigger the joined and left room events.
 func (srv *WSServer) joinRoomById(roomId types.RoomId, connection *ws.Connection) *ws.Room {
 	if room, roomExists := srv.rooms[roomId]; roomExists {
 		room.AddConnection(connection)
 
 		connection.Metadata.CurrentRoomId = room.ID
-		srv.informUserOfAllCurrentUsersInRoom(connection)
-		srv.informRoomUserEnteredChat(connection)
+		srv.informUserOfAllCurrentUsersInRoom(*connection)
+		srv.informRoomUserEnteredChat(*connection)
 
 		return room
 	}
@@ -182,7 +184,7 @@ func (srv *WSServer) leaveRoomById(roomId types.RoomId, connection *ws.Connectio
 	if room, roomExists := srv.rooms[roomId]; roomExists {
 		room.RemoveConnection(connection.ID)
 
-		srv.informRoomUserLeftChat(connection)
+		srv.informRoomUserLeftChat(*connection)
 
 		isConnectionCurrentlyInRoom := connection.Metadata.CurrentRoomId == room.ID
 		if isConnectionCurrentlyInRoom {
@@ -261,7 +263,7 @@ func (srv *WSServer) readAndHandleClientMessages(connection *ws.Connection) {
 		msg, err := connection.ReadMessage()
 		if err != nil {
 			log.Printf("Error reading from conn: %s\n", err.Error())
-			srv.userDisconnected(connection)
+			srv.userDisconnected(*connection)
 			return
 		}
 
@@ -325,10 +327,10 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 			return
 		}
 
-		srv.sendEncryptedMessageToAllConnectionsInTheSameRoom(connection, decrypted)
+		srv.sendEncryptedMessageToAllConnectionsInTheSameRoom(*connection, decrypted)
 
 	case types.MessageTypeJoinRoom:
-		oldRoom := connection.Metadata.CurrentRoomId
+		// oldRoom := connection.Metadata.CurrentRoomId
 		roomName := string(msg.Value)
 
 		room, err := srv.joinRoomByName(roomName, connection)
@@ -352,9 +354,9 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		wsMessage.Value = fmt.Appendf(nil, "Joined room %s", roomName)
 		log.Printf("%s joined room %s", connection.Metadata.Username, roomName)
 
-		// Remove connection from old room
-		log.Printf("Removing %s from old room %s\n", connection.Metadata.Username, oldRoom)
-		srv.leaveRoomById(oldRoom, connection)
+		// // Remove connection from old room
+		// log.Printf("Removing %s from old room %s\n", connection.Metadata.Username, oldRoom)
+		// srv.leaveRoomById(oldRoom, connection)
 
 		// send success system message
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
@@ -473,7 +475,7 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 }
 
 // Remove client from connections and broadcast user left event to its current room
-func (srv *WSServer) userDisconnected(connection *ws.Connection) {
+func (srv *WSServer) userDisconnected(connection ws.Connection) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 
@@ -487,7 +489,7 @@ func (srv *WSServer) userDisconnected(connection *ws.Connection) {
 	srv.informRoomUserLeftChat(connection)
 }
 
-func (srv *WSServer) informUserOfAllCurrentUsersInRoom(user *ws.Connection) {
+func (srv *WSServer) informUserOfAllCurrentUsersInRoom(user ws.Connection) {
 	room := srv.rooms[user.Metadata.CurrentRoomId]
 	connections := room.Connections
 
@@ -516,7 +518,7 @@ func (srv *WSServer) informUserOfAllCurrentUsersInRoom(user *ws.Connection) {
 	}
 }
 
-func (srv *WSServer) informUserOfAllAvailableRooms(newUser *ws.Connection) {
+func (srv *WSServer) informUserOfAllAvailableRooms(user ws.Connection) {
 	srv.mu.RLock()
 	defer srv.mu.RUnlock()
 
@@ -538,17 +540,17 @@ func (srv *WSServer) informUserOfAllAvailableRooms(newUser *ws.Connection) {
 		Type:     types.MessageTypeAvailableRooms,
 		Value:    marshalledRooms,
 		Nonce:    nil,
-		Metadata: types.WSMetadata{Username: newUser.Metadata.Username, Color: newUser.Metadata.Color, CurrentRoomId: newUser.Metadata.CurrentRoomId, UserId: newUser.ID},
+		Metadata: types.WSMetadata{Username: user.Metadata.Username, Color: user.Metadata.Color, CurrentRoomId: user.Metadata.CurrentRoomId, UserId: user.ID},
 	}
 	jsonMsg := msg.Marshal()
 
-	if err = newUser.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
+	if err = user.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
 		log.Println("Problem sending message to the client regarding the currently available rooms: ", err)
 	}
 }
 
 // Inform people of a room that a new user has entered.
-func (srv *WSServer) informRoomUserEnteredChat(connection *ws.Connection) {
+func (srv *WSServer) informRoomUserEnteredChat(connection ws.Connection) {
 	msg := ws.WSMessage{
 		Type:     types.MessageTypeUserEnteredChat,
 		Value:    nil,
@@ -575,7 +577,7 @@ func (srv *WSServer) informRoomUserEnteredChat(connection *ws.Connection) {
 }
 
 // Inform people of a room that a user has left
-func (srv *WSServer) informRoomUserLeftChat(connection *ws.Connection) {
+func (srv *WSServer) informRoomUserLeftChat(connection ws.Connection) {
 	msg := ws.WSMessage{
 		Type:     types.MessageTypeUserLeftChat,
 		Value:    nil,
@@ -601,7 +603,7 @@ func (srv *WSServer) informRoomUserLeftChat(connection *ws.Connection) {
 	}
 }
 
-func (srv *WSServer) sendEncryptedMessageToAllConnectionsInTheSameRoom(client *ws.Connection, decryptedMessage []byte) {
+func (srv *WSServer) sendEncryptedMessageToAllConnectionsInTheSameRoom(client ws.Connection, decryptedMessage []byte) {
 	room, exists := srv.rooms[client.Metadata.CurrentRoomId]
 	if !exists {
 		log.Printf("Room with id %s does not exist on server.\n", client.Metadata.CurrentRoomId)
