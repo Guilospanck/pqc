@@ -6,6 +6,16 @@ Just a simple way of working with Post-Quantum Cryptography (PQC) in Go. Also ma
 
 Disclaimer: not much thought was put into selecting the configurations/algorithms for these. Use at your own peril.
 
+## TUI
+
+### Commands
+
+- `/create <room-name>`: creates a new room;
+- `/delete <room-name>`: deletes a room - if you are the creator;
+- `/join <room-name>`: joins a room;
+- `/leave <room-name>`: leaves a room;
+- `/quit`, `/exit`, `/q`, `:wq`, `:q`, `:wqa`: quits the TUI.
+
 ## Development
 
 ### Installing
@@ -48,7 +58,7 @@ cd tui && bun run dev
 ```
 
 > [!TIP]
-> You can use multiple clients and just one server. The server will handle the data encryption from one client to another and will fanout the information to all connected clients, as if every client is connected to the same big room.
+> You can use multiple clients and just one server. The server will handle the data encryption from one client to another and will fanout the information to all connected clients in the room.
 
 ## Architecture
 
@@ -112,12 +122,6 @@ graph TB
 - TypeScript + @opentui core for TUI
 - JSON communication between TUI and Go client
 - WebSocket protocol for real-time messaging
-
-## TUI
-
-### Commands
-
-- `/quit`, `/exit`, `/q`, `:wq`, `:q`, `:wqa`: quits the TUI.
 
 ## Cryptography
 
