@@ -8,8 +8,9 @@ import {
   setupUI,
   updateCurrentUser,
   updateInputBar,
-  updateMessageArea,
-  updateUsersPanel,
+  updateMessagesArea,
+  updateRoomsArea,
+  updateUsersArea,
 } from "./ui";
 import { sendToGo, setupGo } from "./go";
 import { addMessage, isMessage } from "./message";
@@ -45,7 +46,7 @@ function setupEventListeners(): void {
   eventHandler.subscribe("update_message_area", {
     id: EVENT_HANDLER_ID,
     callback() {
-      updateMessageArea();
+      updateMessagesArea();
     },
   });
 
@@ -78,10 +79,17 @@ function setupEventListeners(): void {
     },
   });
 
-  eventHandler.subscribe("update_users_panel", {
+  eventHandler.subscribe("update_users_area", {
     id: EVENT_HANDLER_ID,
     callback() {
-      updateUsersPanel();
+      updateUsersArea();
+    },
+  });
+
+  eventHandler.subscribe("update_rooms_area", {
+    id: EVENT_HANDLER_ID,
+    callback() {
+      updateRoomsArea();
     },
   });
 }

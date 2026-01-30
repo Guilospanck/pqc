@@ -1,15 +1,6 @@
-import type { MessageType } from "./generated-types";
+import type { WSMetadata } from "./generated-types";
 
-export type TUIGoCommunication = {
-  type: MessageType;
-  value: string;
-  color: string;
-};
-
-export type ConnectedUser = {
-  username: string;
-  color: string;
-};
+export type ConnectedUser = WSMetadata;
 
 export type TUIMessage = {
   text: string;

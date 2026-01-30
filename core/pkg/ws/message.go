@@ -8,16 +8,11 @@ import (
 	"github.com/Guilospanck/pqc/core/pkg/types"
 )
 
-type WSMetadata struct {
-	Username string `json:"username"`
-	Color    string `json:"color"`
-}
-
 type WSMessage struct {
 	Type     types.MessageType `json:"type"`
 	Value    []byte            `json:"value"`
 	Nonce    []byte            `json:"nonce"`
-	Metadata WSMetadata        `json:"metadata"`
+	Metadata types.WSMetadata  `json:"metadata"`
 }
 
 // This function panics if marshalling goes wrong

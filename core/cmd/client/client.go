@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,21 +20,25 @@ import (
 )
 
 type WSClient struct {
-	conn            ws.Connection
+	conn            *ws.Connection
 	reconnect       chan struct{}
 	attempts        atomic.Int64
 	ctx             context.Context
 	cancelFunc      context.CancelFunc
 	isConnected     bool
 	deadLetterQueue chan string // we save non-delivered non-encrypted messages here
+	currentRoomID   types.RoomId
 }
 
 func NewClient() *WSClient {
+	connection := ws.NewEmptyConnection()
+
 	return &WSClient{
-		conn:            ws.NewEmptyConnection(),
+		conn:            &connection,
 		reconnect:       make(chan struct{}, 1),
 		isConnected:     false,
 		deadLetterQueue: make(chan string, 10),
+		currentRoomID:   types.RoomId(""), // tbd on connection
 	}
 }
 
@@ -52,9 +57,9 @@ func (client *WSClient) connectionManager() {
 		attempts := client.attempts.Load()
 
 		if attempts == int64(1) {
-			ui.EmitToUI(types.MessageTypeDisconnected, string(client.conn.Metadata.Username), client.conn.Metadata.Color)
+			ui.EmitToUI(types.MessageTypeDisconnected, string(client.conn.Metadata.Username), *client.conn.Metadata)
 		} else {
-			ui.EmitToUI(types.MessageTypeReconnecting, string(client.conn.Metadata.Username), client.conn.Metadata.Color)
+			ui.EmitToUI(types.MessageTypeReconnecting, string(client.conn.Metadata.Username), *client.conn.Metadata)
 		}
 
 		if attempts >= int64(MAX_ATTEMPTS) {
@@ -87,9 +92,14 @@ func (client *WSClient) connectToWSServer() error {
 	client.conn.ResetChannels()
 
 	requestHeader := http.Header{}
-	if client.conn.Metadata.Color != "" || client.conn.Metadata.Username != "" {
-		requestHeader.Set("username", client.conn.Metadata.Username)
+	if client.conn.Metadata.Color != "" {
 		requestHeader.Set("color", client.conn.Metadata.Color)
+	}
+	if client.conn.Metadata.Username != "" {
+		requestHeader.Set("username", client.conn.Metadata.Username)
+	}
+	if client.currentRoomID != types.RoomId("") {
+		requestHeader.Set("roomId", string(client.currentRoomID))
 	}
 
 	conn, res, err := websocket.DefaultDialer.Dial(url, requestHeader)
@@ -121,9 +131,9 @@ func (client *WSClient) connectToWSServer() error {
 
 	username := res.Header.Get("username")
 	color := res.Header.Get("color")
-	client.conn.Metadata = ws.WSMetadata{Username: username, Color: color}
+	client.conn.Metadata = &types.WSMetadata{Username: username, Color: color, UserId: client.conn.ID, CurrentRoomId: client.currentRoomID}
 	// Tell UI we're connected with some username and color
-	ui.EmitToUI(types.MessageTypeConnected, username, color)
+	ui.EmitToUI(types.MessageTypeConnected, username, *client.conn.Metadata)
 
 	if client.conn.Keys.Public == nil {
 		if err := client.generateKeys(); err != nil {
@@ -154,7 +164,7 @@ func (client *WSClient) drainDLQ() {
 	for range initial {
 		msg := <-client.deadLetterQueue
 		log.Printf("[%s] Sending message from DLQ: %s", client.conn.Metadata.Username, msg)
-		client.sendEncrypted(msg)
+		client.handleTUIMessage(msg)
 	}
 }
 
@@ -174,7 +184,7 @@ func (client *WSClient) exchangeKeys() error {
 		Type:     types.MessageTypeExchangeKeys,
 		Value:    client.conn.Keys.Public,
 		Nonce:    nil,
-		Metadata: client.conn.Metadata,
+		Metadata: *client.conn.Metadata,
 	}
 	jsonMsg := msg.Marshal()
 
@@ -205,7 +215,8 @@ func (client *WSClient) readAndHandleServerMessages() {
 			log.Printf("[%s] Error unmarshalling message: %s\n", client.conn.Metadata.Username, err.Error())
 			continue
 		}
-		client.conn.HandleServerMessage(msgJson)
+
+		client.handleServerMessage(msgJson, client.conn)
 
 		select {
 		case <-client.ctx.Done():
@@ -225,7 +236,7 @@ func (client *WSClient) triggerReconnect() {
 	}
 }
 
-func (client *WSClient) sendEncrypted(message string) {
+func (client *WSClient) handleTUIMessage(message string) {
 	if client.conn.Keys.SharedSecret == nil {
 		log.Print("Shared secret not ready")
 		return
@@ -244,32 +255,14 @@ func (client *WSClient) sendEncrypted(message string) {
 		return
 	}
 
-	// Encrypt message
-	nonce, ciphertext, err := cryptography.EncryptMessage(client.conn.Keys.SharedSecret, []byte(text))
-	if err != nil {
-		log.Printf("Could not encrypt message: %s\n", err.Error())
+	// Check if it's another command other than QUIT
+	if strings.HasPrefix(text, "/") {
+		client.handleCommand(text)
 		return
 	}
 
-	msg := ws.WSMessage{
-		Type:     types.MessageTypeEncryptedMessage,
-		Value:    ciphertext,
-		Nonce:    nonce,
-		Metadata: ws.WSMetadata{Username: client.conn.Metadata.Username, Color: client.conn.Metadata.Color},
-	}
-	jsonMsg := msg.Marshal()
-
-	if !client.isConnected {
-		client.deadLetterQueue <- message
-		return
-	}
-
-	// Send encrypted message
-	if err := client.conn.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
-		log.Printf("Error writing message to server: %s\n", err.Error())
-		client.deadLetterQueue <- message
-		client.triggerReconnect()
-	}
+	// Then it's just a normal message to be sent encrypted
+	client.sendMessageToServer(text, types.MessageTypeEncryptedMessage)
 }
 
 func (client *WSClient) closeAndDisconnect() {
@@ -281,6 +274,92 @@ func (client *WSClient) closeAndDisconnect() {
 	}
 
 	os.Exit(0)
+}
+
+func (client *WSClient) handleCommand(input string) {
+	fields := strings.Fields(input)
+	command := fields[0]
+	args := fields[1:]
+
+	validateRoomsArgs := func() bool {
+		if len(args) != 1 {
+			client.sendSystemMessage(fmt.Sprintf("Error.\nUsage: %s <room-name>\n", command))
+			return false
+		}
+
+		return true
+	}
+
+	switch command {
+	case "/join":
+		if validateRoomsArgs() {
+			client.sendMessageToServer(args[0], types.MessageTypeJoinRoom)
+		}
+	case "/leave":
+		if validateRoomsArgs() {
+			client.sendMessageToServer(args[0], types.MessageTypeLeaveRoom)
+		}
+	case "/create":
+		if validateRoomsArgs() {
+			client.sendMessageToServer(args[0], types.MessageTypeCreateRoom)
+		}
+	case "/delete":
+		if validateRoomsArgs() {
+			client.sendMessageToServer(args[0], types.MessageTypeDeleteRoom)
+		}
+	default:
+		client.sendSystemMessage(fmt.Sprintf("Command \"%s\" not recognised.\nAvailable commands: /join, /leave, /create-room, /delete-room", command))
+	}
+}
+
+func (client *WSClient) sendSystemMessage(message string) {
+	metadata := client.conn.Metadata
+	metadata.Color = "#F00"
+
+	ui.EmitToUI(types.MessageTypeMessage, message, *metadata)
+}
+
+func (client *WSClient) sendMessageToServer(tuiMessage string, msgType types.MessageType) {
+	wsMessage := ws.WSMessage{
+		Type: msgType,
+		Metadata: types.WSMetadata{
+			Username:      client.conn.Metadata.Username,
+			Color:         client.conn.Metadata.Color,
+			CurrentRoomId: client.conn.Metadata.CurrentRoomId,
+			UserId:        client.conn.ID,
+		},
+	}
+
+	switch msgType {
+	case types.MessageTypeEncryptedMessage:
+		nonce, ciphertext, err := cryptography.EncryptMessage(client.conn.Keys.SharedSecret, []byte(tuiMessage))
+		if err != nil {
+			log.Printf("Could not encrypt message: %s\n", err.Error())
+			return
+		}
+
+		wsMessage.Value = ciphertext
+		wsMessage.Nonce = nonce
+
+	case types.MessageTypeJoinRoom, types.MessageTypeCreateRoom, types.MessageTypeLeaveRoom, types.MessageTypeDeleteRoom:
+		wsMessage.Value = []byte(tuiMessage)
+
+	default:
+		log.Printf("This message type (%s) is not recognisable in the client from TUI.\n", msgType)
+	}
+
+	jsonMsg := wsMessage.Marshal()
+
+	if !client.isConnected {
+		client.deadLetterQueue <- tuiMessage
+		return
+	}
+
+	if err := client.conn.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
+		log.Printf("Error writing message to server: %s\n", err.Error())
+		client.deadLetterQueue <- tuiMessage
+		client.triggerReconnect()
+	}
 }
 
 func (client *WSClient) pingRoutine() {
@@ -315,4 +394,78 @@ func (client *WSClient) pingRoutine() {
 			return
 		}
 	}
+}
+
+func (client *WSClient) handleServerMessage(msg ws.WSMessage, connection *ws.Connection) {
+	switch msg.Type {
+	case types.MessageTypeExchangeKeys:
+		ciphertext := msg.Value
+		sharedSecret, err := connection.Keys.Private.Decapsulate(ciphertext)
+		if err != nil {
+			log.Printf("Could not get shared secret from ciphertext: %s\n", err.Error())
+			return
+		}
+
+		// Now the client also have the shared secret
+		connection.Keys.SharedSecret = cryptography.DeriveKey(sharedSecret)
+		ui.EmitToUI(types.MessageTypeKeysExchanged, connection.Metadata.Username, *connection.Metadata)
+
+		close(connection.KeysExchanged)
+
+	case types.MessageTypeEncryptedMessage:
+		nonce := msg.Nonce
+		ciphertext := msg.Value
+
+		log.Printf("Received encrypted message: >>> %s <<<, with nonce: >>> %s <<<\n", ciphertext, nonce)
+		decrypted, err := cryptography.DecryptMessage(connection.Keys.SharedSecret, nonce, ciphertext)
+		if err != nil {
+			log.Printf("Could not decrypt message from server: %s\n", err.Error())
+			return
+		}
+
+		ui.EmitToUI(types.MessageTypeMessage, string(decrypted), msg.Metadata)
+	case types.MessageTypeUserEnteredChat:
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeUserEnteredChat, string(metadata.Username), metadata)
+	case types.MessageTypeUserLeftChat:
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeUserLeftChat, string(metadata.Username), metadata)
+	case types.MessageTypeCurrentUsers:
+		metadata := msg.Metadata
+		value := msg.Value
+		ui.EmitToUI(types.MessageTypeCurrentUsers, string(value), metadata)
+	case types.MessageTypeSuccess:
+		value := msg.Value
+		metadata := msg.Metadata
+		metadata.Color = "#0F0"
+		ui.EmitToUI(types.MessageTypeSuccess, string(value), metadata)
+	case types.MessageTypeError:
+		value := msg.Value
+		metadata := msg.Metadata
+		metadata.Color = "#F00"
+		ui.EmitToUI(types.MessageTypeError, string(value), metadata)
+	case types.MessageTypeJoinedRoom:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeJoinedRoom, string(value), metadata)
+	case types.MessageTypeLeftRoom:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeLeftRoom, string(value), metadata)
+	case types.MessageTypeCreatedRoom:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeCreatedRoom, string(value), metadata)
+	case types.MessageTypeDeletedRoom:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeDeletedRoom, string(value), metadata)
+	case types.MessageTypeAvailableRooms:
+		value := msg.Value
+		metadata := msg.Metadata
+		ui.EmitToUI(types.MessageTypeAvailableRooms, string(value), metadata)
+	default:
+		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
+	}
+
 }
