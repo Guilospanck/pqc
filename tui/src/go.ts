@@ -50,8 +50,6 @@ export function setupGo(): void {
         color: message.metadata.color,
       };
 
-      console.log("TYPE: ", message.type);
-
       switch (message.type) {
         case "connected": {
           State.currentUser = message.metadata;
@@ -102,8 +100,6 @@ export function setupGo(): void {
           });
           break;
         }
-        // TODO: check why, even though we receive the correct event
-        // upon joining a new room, the UI not being updated correctly
         case "user_entered_chat": {
           addUserInRoom(message.metadata);
           EventHandler().notify("update_users_area", {});
@@ -138,7 +134,6 @@ export function setupGo(): void {
           });
           break;
         }
-        // TODO: we're not receiving this upon connection...
         case "joined_room": {
           let room: RoomInfo;
           try {

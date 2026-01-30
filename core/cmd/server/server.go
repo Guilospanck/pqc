@@ -48,7 +48,6 @@ func (srv *WSServer) startServer() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-// TODO: the problem in the UI is that we are sending "user_left_chat" after "user_entered_chat" when a user joins a new room.
 func (srv *WSServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	connection := ws.NewEmptyConnection()
 
