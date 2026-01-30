@@ -171,6 +171,11 @@ func (srv *WSServer) joinRoomById(roomId types.RoomId, connection *ws.Connection
 		return nil
 	}
 
+	// Remove connection from old room
+	oldRoom := connection.Metadata.CurrentRoomId
+	log.Printf("Removing %s from old room %s\n", connection.Metadata.Username, oldRoom)
+	srv.leaveRoomById(oldRoom, connection, false)
+
 	room.AddConnection(connection)
 	connection.Metadata.CurrentRoomId = room.ID
 	srv.informUserOfAllCurrentUsersInRoom(*connection)
@@ -182,21 +187,21 @@ func (srv *WSServer) joinRoomById(roomId types.RoomId, connection *ws.Connection
 }
 
 // TODO: change the message if a user tries to leave a room he is not in.
-func (srv *WSServer) leaveRoomById(roomId types.RoomId, connection *ws.Connection) *ws.Room {
-	if room, roomExists := srv.rooms[roomId]; roomExists {
-		room.RemoveConnection(connection.ID)
-
-		srv.informRoomUserLeftChat(*connection)
-
-		isConnectionCurrentlyInRoom := connection.Metadata.CurrentRoomId == room.ID
-		if isConnectionCurrentlyInRoom {
-			srv.joinRoomById(utils.LOBBY_ROOM, connection)
-		}
-
-		return room
+func (srv *WSServer) leaveRoomById(roomId types.RoomId, connection *ws.Connection, shouldGoToLobby bool) *ws.Room {
+	room, roomExists := srv.rooms[roomId]
+	if !roomExists {
+		return nil
 	}
 
-	return nil
+	room.RemoveConnection(connection.ID)
+	srv.informRoomUserLeftChat(*connection)
+
+	isConnectionCurrentlyInRoom := connection.Metadata.CurrentRoomId == room.ID
+	if isConnectionCurrentlyInRoom && shouldGoToLobby {
+		srv.joinRoomById(utils.LOBBY_ROOM, connection)
+	}
+
+	return room
 }
 
 func (srv *WSServer) joinRoomByName(name string, connection *ws.Connection) (*ws.Room, error) {
@@ -213,7 +218,7 @@ func (srv *WSServer) joinRoomByName(name string, connection *ws.Connection) (*ws
 func (srv *WSServer) leaveRoomByName(name string, connection *ws.Connection) (*ws.Room, error) {
 	for _, room := range srv.rooms {
 		if room.Name == name {
-			room := srv.leaveRoomById(room.ID, connection)
+			room := srv.leaveRoomById(room.ID, connection, true)
 			return room, nil
 		}
 	}
@@ -344,12 +349,7 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		srv.sendEncryptedMessageToAllConnectionsInTheSameRoom(*connection, decrypted)
 
 	case types.MessageTypeJoinRoom:
-		// oldRoom := connection.Metadata.CurrentRoomId
 		roomName := string(msg.Value)
-
-		// // Remove connection from old room
-		// log.Printf("Removing %s from old room %s\n", connection.Metadata.Username, oldRoom)
-		// srv.leaveRoomById(oldRoom, connection)
 
 		_, err := srv.joinRoomByName(roomName, connection)
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
