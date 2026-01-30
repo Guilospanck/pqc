@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/Guilospanck/pqc/core/pkg/cryptography"
+	"github.com/Guilospanck/pqc/core/pkg/events"
 	"github.com/Guilospanck/pqc/core/pkg/types"
 	"github.com/Guilospanck/pqc/core/pkg/utils"
 	"github.com/Guilospanck/pqc/core/pkg/ws"
@@ -164,19 +165,20 @@ func (srv *WSServer) handleConnectionMetadata(headers http.Header, connection *w
 	connection.Metadata = &metadata
 }
 
-// TODO: both in this and the leaveRoomById: trigger the joined and left room events.
 func (srv *WSServer) joinRoomById(roomId types.RoomId, connection *ws.Connection) *ws.Room {
-	if room, roomExists := srv.rooms[roomId]; roomExists {
-		room.AddConnection(connection)
-
-		connection.Metadata.CurrentRoomId = room.ID
-		srv.informUserOfAllCurrentUsersInRoom(*connection)
-		srv.informRoomUserEnteredChat(*connection)
-
-		return room
+	room, roomExists := srv.rooms[roomId]
+	if !roomExists {
+		return nil
 	}
 
-	return nil
+	room.AddConnection(connection)
+	connection.Metadata.CurrentRoomId = room.ID
+	srv.informUserOfAllCurrentUsersInRoom(*connection)
+	srv.informRoomUserEnteredChat(*connection)
+
+	events.TriggerRoomEvent(types.MessageTypeJoinedRoom, room, connection)
+
+	return room
 }
 
 // TODO: change the message if a user tries to leave a room he is not in.
@@ -223,6 +225,12 @@ func (srv *WSServer) createRoom(name string, creator types.ClientId) *ws.Room {
 	room := ws.NewRoom(creator, name)
 	srv.rooms[room.ID] = &room
 
+	// Trigger the room created event for every person
+	// in the server.
+	for _, c := range srv.connections {
+		events.TriggerRoomEvent(types.MessageTypeCreatedRoom, &room, c)
+	}
+
 	return &room
 }
 
@@ -254,6 +262,12 @@ func (srv *WSServer) deleteRoomByName(name string, connection *ws.Connection) (*
 	}
 
 	delete(srv.rooms, room.ID)
+
+	// Trigger the room created event for every person
+	// in the server.
+	for _, c := range srv.connections {
+		events.TriggerRoomEvent(types.MessageTypeDeletedRoom, room, c)
+	}
 
 	return room, nil
 }
@@ -333,15 +347,12 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		// oldRoom := connection.Metadata.CurrentRoomId
 		roomName := string(msg.Value)
 
-		room, err := srv.joinRoomByName(roomName, connection)
-		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+		// // Remove connection from old room
+		// log.Printf("Removing %s from old room %s\n", connection.Metadata.Username, oldRoom)
+		// srv.leaveRoomById(oldRoom, connection)
 
-		roomInfo := types.RoomInfo{
-			ID:        room.ID,
-			Name:      room.Name,
-			CreatedBy: room.CreatedBy,
-			CreatedAt: room.CreatedAt,
-		}
+		_, err := srv.joinRoomByName(roomName, connection)
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 
 		if err != nil {
 			wsMessage.Type = types.MessageTypeError
@@ -354,35 +365,15 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		wsMessage.Value = fmt.Appendf(nil, "Joined room %s", roomName)
 		log.Printf("%s joined room %s", connection.Metadata.Username, roomName)
 
-		// // Remove connection from old room
-		// log.Printf("Removing %s from old room %s\n", connection.Metadata.Username, oldRoom)
-		// srv.leaveRoomById(oldRoom, connection)
-
 		// send success system message
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
-		sendMessageToClient()
-
-		// send `joined` message
-		wsMessage.Type = types.MessageTypeJoinedRoom
-		marshalledRoomInfo, err := json.Marshal(roomInfo)
-		if err != nil {
-			log.Printf("Error trying to marshall room in the `MessageTypeJoinRoom` event: %s\n", err.Error())
-		}
-		wsMessage.Value = marshalledRoomInfo
 		sendMessageToClient()
 
 	case types.MessageTypeDeleteRoom:
 		roomName := string(msg.Value)
 
-		room, err := srv.deleteRoomByName(roomName, connection)
+		_, err := srv.deleteRoomByName(roomName, connection)
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
-
-		roomInfo := types.RoomInfo{
-			ID:        room.ID,
-			Name:      room.Name,
-			CreatedBy: room.CreatedBy,
-			CreatedAt: room.CreatedAt,
-		}
 
 		if err != nil {
 			wsMessage.Type = types.MessageTypeError
@@ -397,54 +388,22 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 		sendMessageToClient()
 
-		// send `deleted` message
-		wsMessage.Type = types.MessageTypeDeletedRoom
-		marshalledRoomInfo, err := json.Marshal(roomInfo)
-		if err != nil {
-			log.Printf("Error trying to marshall room in the `MessageTypeDeleteRoom` event: %s\n", err.Error())
-		}
-		wsMessage.Value = marshalledRoomInfo
-		srv.sendMessageToEveryoneInTheServer(wsMessage)
-
 	case types.MessageTypeCreateRoom:
 		roomName := string(msg.Value)
 
-		room := srv.createRoom(roomName, connection.ID)
+		srv.createRoom(roomName, connection.ID)
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
-
-		roomInfo := types.RoomInfo{
-			ID:        room.ID,
-			Name:      room.Name,
-			CreatedBy: room.CreatedBy,
-			CreatedAt: room.CreatedAt,
-		}
 
 		// send success message
 		wsMessage.Type = types.MessageTypeSuccess
 		wsMessage.Value = fmt.Appendf(nil, "Created room %s", roomName)
 		sendMessageToClient()
 
-		// send `created` message
-		wsMessage.Type = types.MessageTypeCreatedRoom
-		marshalledRoomInfo, err := json.Marshal(roomInfo)
-		if err != nil {
-			log.Printf("Error trying to marshall room in the `MessageTypeCreateRoom` event: %s\n", err.Error())
-		}
-		wsMessage.Value = marshalledRoomInfo
-		srv.sendMessageToEveryoneInTheServer(wsMessage)
-
 	case types.MessageTypeLeaveRoom:
 		roomName := string(msg.Value)
 
-		room, err := srv.leaveRoomByName(roomName, connection)
+		_, err := srv.leaveRoomByName(roomName, connection)
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
-
-		roomInfo := types.RoomInfo{
-			ID:        room.ID,
-			Name:      room.Name,
-			CreatedBy: room.CreatedBy,
-			CreatedAt: room.CreatedAt,
-		}
 
 		if err != nil {
 			wsMessage.Type = types.MessageTypeError
@@ -456,15 +415,6 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		// send success message
 		wsMessage.Type = types.MessageTypeSuccess
 		wsMessage.Value = fmt.Appendf(nil, "Left room %s", roomName)
-		sendMessageToClient()
-
-		// send `left` message
-		wsMessage.Type = types.MessageTypeLeftRoom
-		marshalledRoomInfo, err := json.Marshal(roomInfo)
-		if err != nil {
-			log.Printf("Error trying to marshall room in the `MessageTypeLeaveRoom` event: %s\n", err.Error())
-		}
-		wsMessage.Value = marshalledRoomInfo
 		sendMessageToClient()
 
 	default:
@@ -618,15 +568,5 @@ func (srv *WSServer) sendEncryptedMessageToAllConnectionsInTheSameRoom(client ws
 		msgWithPublicKey := fmt.Sprintf("%s: %s", client.Metadata.Username, string(decryptedMessage))
 
 		c.RelayMessage(msgWithPublicKey, *client.Metadata)
-	}
-}
-
-// Sends a message to all people in the server, regarding their rooms.
-func (srv *WSServer) sendMessageToEveryoneInTheServer(wsMessage ws.WSMessage) {
-	jsonMsg := wsMessage.Marshal()
-	for _, c := range srv.connections {
-		if err := c.WriteMessage(string(jsonMsg), websocket.TextMessage); err != nil {
-			log.Printf("Error trying to inform the client %s about the message %s: %s\n", c.Metadata.Username, jsonMsg, err.Error())
-		}
 	}
 }

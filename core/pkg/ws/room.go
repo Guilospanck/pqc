@@ -42,3 +42,12 @@ func (room *Room) AddConnection(connection *Connection) {
 func (room *Room) RemoveConnection(id types.ClientId) {
 	delete(room.Connections, id)
 }
+
+func (room *Room) GetRoomInfo() types.RoomInfo {
+	return types.RoomInfo{
+		ID:        room.ID,
+		Name:      room.Name,
+		CreatedBy: room.CreatedBy,
+		CreatedAt: room.CreatedAt,
+	}
+}
