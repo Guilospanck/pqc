@@ -314,7 +314,19 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		}
 	}
 
-	// TODO: improve the handling of room commands code. IT can be extracted into a better function
+	sendSuccessMessage := func(value []byte) {
+		wsMessage.Type = types.MessageTypeSuccess
+		wsMessage.Value = value
+		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
+		sendMessageToClient()
+	}
+
+	sendErrorMessage := func(value []byte) {
+		wsMessage.Type = types.MessageTypeError
+		wsMessage.Value = value
+		sendMessageToClient()
+	}
+
 	switch msg.Type {
 	case types.MessageTypeExchangeKeys:
 		// Encapsulate ciphertext with the public key from client
@@ -354,19 +366,12 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 
 		if err != nil {
-			wsMessage.Type = types.MessageTypeError
-			wsMessage.Value = []byte(err.Error())
-			sendMessageToClient()
+			sendErrorMessage([]byte(err.Error()))
 			return
 		}
 
-		wsMessage.Type = types.MessageTypeSuccess
-		wsMessage.Value = fmt.Appendf(nil, "Joined room %s", roomName)
-		log.Printf("%s joined room %s", connection.Metadata.Username, roomName)
-
-		// send success system message
-		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
-		sendMessageToClient()
+		value := fmt.Appendf(nil, "Joined room %s", roomName)
+		sendSuccessMessage(value)
 
 	case types.MessageTypeDeleteRoom:
 		roomName := string(msg.Value)
@@ -375,17 +380,12 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 
 		if err != nil {
-			wsMessage.Type = types.MessageTypeError
-			wsMessage.Value = []byte(err.Error())
-			sendMessageToClient()
+			sendErrorMessage([]byte(err.Error()))
 			return
 		}
 
-		// Send success system message
-		wsMessage.Type = types.MessageTypeSuccess
-		wsMessage.Value = fmt.Appendf(nil, "Deleted room %s", roomName)
-		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
-		sendMessageToClient()
+		value := fmt.Appendf(nil, "Deleted room %s", roomName)
+		sendSuccessMessage(value)
 
 	case types.MessageTypeCreateRoom:
 		roomName := string(msg.Value)
@@ -405,22 +405,16 @@ func (srv *WSServer) handleClientMessage(msg ws.WSMessage, connection *ws.Connec
 		wsMessage.Metadata.CurrentRoomId = connection.Metadata.CurrentRoomId
 
 		if err != nil {
-			wsMessage.Type = types.MessageTypeError
-			wsMessage.Value = []byte(err.Error())
-			sendMessageToClient()
+			sendErrorMessage([]byte(err.Error()))
 			return
 		}
 
-		// send success message
-		wsMessage.Type = types.MessageTypeSuccess
-		wsMessage.Value = fmt.Appendf(nil, "Left room %s", roomName)
-		sendMessageToClient()
+		value := fmt.Appendf(nil, "Left room %s", roomName)
+		sendSuccessMessage(value)
 
 	default:
 		log.Printf("Received a message with an unknown type: %s\n", msg.Type)
 	}
-
-	log.Printf(">>>> CURRENT ROOM for user %s: %s\n", connection.Metadata.Username, connection.Metadata.CurrentRoomId)
 }
 
 // Remove client from connections and broadcast user left event to its current room
